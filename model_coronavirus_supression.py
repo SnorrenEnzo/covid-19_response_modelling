@@ -152,13 +152,13 @@ def government_response_results_simple():
 	the coronavirus pandemic
 	"""
 
-	def response_model_1(prevalence, prevalence_threshold, current_day, day_measures_taken = None, response_delay = 14, upward_R = 1.3, downward_R = 0.8):
+	def response_model_1(prevalence, prevalence_threshold, R_from_now, t_from_now, response_delay = 14, upward_R = 1.3, downward_R = 0.8):
 		"""
 		Model that ensures that a R0 below 1 is enforced when the prevalence rises
 		above a threshold, though with a certain delay due to the incubation period
 		etc
 		"""
-
+		'''
 		if day_measures_taken == None and prevalence < prevalence_threshold:
 			return upward_R, day_measures_taken
 		elif day_measures_taken == None and prevalence >= prevalence_threshold:
@@ -170,44 +170,65 @@ def government_response_results_simple():
 			if prevalence < prevalence_threshold:
 				day_measures_taken = None
 			return downward_R, day_measures_taken
+		'''
+		#determine location in array where we can change the response R
+		change_loc = np.argmax((t_from_now - t_from_now[0]) > response_delay)
+
+		if prevalence > prevalence_threshold and R_from_now[change_loc] >= 1:
+			R_from_now[change_loc:] = downward_R
+		if prevalence < prevalence_threshold and R_from_now[change_loc] < 1:
+			R_from_now[change_loc:] = upward_R
+
+		return R_from_now
 
 
 	df_prevalence, df_R0 = load_prevalence_R0_data()
 
 
-
+	### tweakables
 	starting_prev = 200 #per million
+	prevalence_threshold = 5000 #per million
+
+	upward_R = 1.3
+	downward_R = 0.8
 
 	#time range in days
 	timestep_size = 1
-	t_range = np.arange(0, 150, timestep_size)
+	t_range = np.arange(0, 220, timestep_size)
 
 	#store prevalence and R0
-	prev_array = np.zeros(len(t_range)+1)
-	response_R_array = np.zeros(len(t_range)+1)
+	prev_array = np.zeros(len(t_range) + 1)
+	response_R_array = np.zeros(len(t_range) + 1) + upward_R
 
 	prev_array[0] = starting_prev
 
 	day_measures_taken = None
 	for i, t in enumerate(t_range):
-		#calculate response
-		response_R, day_measures_taken = response_model_1(prev_array[i], 5000, t, day_measures_taken = day_measures_taken, response_delay = 14)
-
-		response_R_array[i] = response_R
+		#calculate response, basically changing the R in the future
+		response_R_array[i:] = response_model_1(prev_array[i], prevalence_threshold, response_R_array[i:], t_range[i:], response_delay = 14, upward_R = upward_R, downward_R = downward_R)
 
 		#number of exposed persons
-		prev_array[i+1] = exponential_model(prev_array[i], response_R, timestep_size, serial_interval)
+		prev_array[i+1] = exponential_model(prev_array[i], response_R_array[i], timestep_size, serial_interval)
 
 
+	fig, ax1 = plt.subplots()
 
-	fig, ax = plt.subplots()
+	ax2 = ax1.twinx()
 
-	ax.plot(t_range, prev_array[:-1], label = 'Prevalence')
+	ln1 = ax1.plot(t_range, prev_array[:-1], label = 'Prevalence')
+	ln2 = ax2.plot(t_range, response_R_array[:-1], label = 'Reponse R', color = 'maroon')
 
-	ax.set_xlabel('Days since start of the outbreak')
-	ax.set_ylabel('Number of contagious persons (prevalence) per million')
+	ax1.set_xlabel('Days since start of the outbreak')
+	ax1.set_ylabel('Number of contagious persons (prevalence) per million')
+	ax2.set_ylabel(r'$R$')
 
-	ax.grid(linestyle = ':')
+	lns = ln1 + ln2
+	labs = [l.get_label() for l in lns]
+	ax2.legend(lns, labs, loc = 'best')
+
+	ax2.set_ylim(0, np.max(response_R_array) * 2)
+
+	ax1.grid(linestyle = ':')
 
 	plt.savefig('Government_response_outcome_simple_1.png', dpi = 200, bbox_inches = 'tight')
 	plt.close()
