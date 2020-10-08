@@ -39,6 +39,12 @@ def load_prevalence_R0_data():
 	df_R0 = pd.read_json(fname_R0)
 
 	df_prevalence.set_index('Date', inplace = True)
+	df_R0.set_index('Date', inplace = True)
+
+	#change prevalence to per million
+	df_prevalence['prev_avg'] *= per_million_factor
+	df_prevalence['prev_low'] *= per_million_factor
+	df_prevalence['prev_up'] *= per_million_factor
 
 	return df_prevalence, df_R0
 
@@ -71,20 +77,55 @@ def load_deathdata():
 
 	return df_deaths
 
+def get_mean_mu(df_prevalence, df_deaths):
+	#slice the dD/dt between dates
+	mask = (df_deaths.index > '2020-02-27') & (df_deaths.index <= '2020-08-10')
+	df_deaths = df_deaths.loc[mask]
+
+	#do the same for the prevalence I
+	mask = (df_prevalence.index > '2020-02-27') & (df_prevalence.index <= '2020-08-10')
+	df_prevalence = df_prevalence.loc[mask]
+
+	df_mu = df_deaths[['Amount']].merge(df_prevalence[['prev_avg']], right_index = True, left_index = True)
+
+	#now calculate the mortality rate per unit time
+	df_mu['mu'] = df_mu['Amount']/df_mu['prev_avg'] #day^-1
+
+	fig, ax = plt.subplots()
+
+	ax.plot(df_mu.index, df_mu['mu'])
+
+	ax.set_ylabel(r'Mortality rate per unit time ($\mu$) [day$^-1$]')
+	ax.set_title('Change in COVID-19 mortality rate per unit time ')
+
+	ax.grid(linestyle = ':')
+
+	plt.savefig('mu_change_NL.png', dpi = 200, bbox_inches = 'tight')
+	plt.close()
+
+	#determine average between april and june
+	mask = (df_mu.index > '2020-04-01') & (df_mu.index <= '2020-06-01')
+	mu_mean = np.mean(df_mu.loc[mask]["mu"])
+	print(f'Mean mu: {mu_mean}')
+
+	return mu_mean
+
 def exponential_model(nE_0, R0, t, tau):
 	return nE_0 * R0**(t/tau)
 
 def plotIRLstats():
-	df_prevalence, df_R0 = loaddata()
+	df_prevalence, df_R0 = load_prevalence_R0_data()
+
+	print(np.nanmin(df_prevalence['prev_avg']))
 
 	fig, ax1 = plt.subplots()
 	ax2 = ax1.twinx()
 
-	ln1 = ax1.plot(df_prevalence['Date'], df_prevalence['prev_avg']*per_million_factor, label = 'Prevalence')
-	ax1.fill_between(df_prevalence['Date'], df_prevalence['prev_low']*per_million_factor, df_prevalence['prev_up']*per_million_factor, alpha = 0.4)
+	ln1 = ax1.plot(df_prevalence.index, df_prevalence['prev_avg'], label = 'Prevalence')
+	ax1.fill_between(df_prevalence.index, df_prevalence['prev_low'], df_prevalence['prev_up'], alpha = 0.4)
 
-	ln2 = ax2.plot(df_R0['Date'], df_R0['Rt_avg'], color = 'maroon', label = r'$R_0$')
-	ax2.fill_between(df_R0['Date'], df_R0['Rt_low'], df_R0['Rt_up'], alpha = 0.4, color = 'maroon')
+	ln2 = ax2.plot(df_R0.index, df_R0['Rt_avg'], color = 'maroon', label = r'$R_0$')
+	ax2.fill_between(df_R0.index, df_R0['Rt_low'], df_R0['Rt_up'], alpha = 0.4, color = 'maroon')
 
 	ax1.set_ylim(0)
 	ax2.set_ylim(0, 2.6)
@@ -96,7 +137,7 @@ def plotIRLstats():
 	ax1.grid(linestyle = ':', axis = 'x')
 	ax2.grid(linestyle = ':', axis = 'y')
 
-	fig.autofmt_xdate()
+	# fig.autofmt_xdate()
 
 	ax1.set_ylabel('Prevalence (estimated active cases per million)')
 	ax2.set_ylabel(r'Basic reproductive number $R_0$')
@@ -106,28 +147,69 @@ def plotIRLstats():
 	plt.savefig('coronadashboard_measurements.png', dpi = 200, bbox_inches = 'tight')
 
 def government_response_results_simple():
+	"""
+	Make a simple model of the effects of different responses of a government to
+	the coronavirus pandemic
+	"""
+
+	def response_model_1(prevalence, prevalence_threshold, current_day, day_measures_taken = None, response_delay = 14, upward_R = 1.3, downward_R = 0.8):
+		"""
+		Model that ensures that a R0 below 1 is enforced when the prevalence rises
+		above a threshold, though with a certain delay due to the incubation period
+		etc
+		"""
+
+		if day_measures_taken == None and prevalence < prevalence_threshold:
+			return upward_R, day_measures_taken
+		elif day_measures_taken == None and prevalence >= prevalence_threshold:
+			day_measures_taken = current_day
+			return upward_R, day_measures_taken
+		elif day_measures_taken != None and (day_measures_taken + response_delay > current_day):
+			return upward_R, day_measures_taken
+		elif day_measures_taken != None and (day_measures_taken + response_delay <= current_day):
+			if prevalence < prevalence_threshold:
+				day_measures_taken = None
+			return downward_R, day_measures_taken
+
+
 	df_prevalence, df_R0 = load_prevalence_R0_data()
 
-	peak_prev = 200000
 
-	response_R = 0.9
+
+	starting_prev = 200 #per million
 
 	#time range in days
-	t_range = np.arange(0, 150, 1)
+	timestep_size = 1
+	t_range = np.arange(0, 150, timestep_size)
 
-	#number of exposed persons
-	nE = exponential_model(peak_prev, response_R, t_range, serial_interval)
+	#store prevalence and R0
+	prev_array = np.zeros(len(t_range)+1)
+	response_R_array = np.zeros(len(t_range)+1)
+
+	prev_array[0] = starting_prev
+
+	day_measures_taken = None
+	for i, t in enumerate(t_range):
+		#calculate response
+		response_R, day_measures_taken = response_model_1(prev_array[i], 5000, t, day_measures_taken = day_measures_taken, response_delay = 14)
+
+		response_R_array[i] = response_R
+
+		#number of exposed persons
+		prev_array[i+1] = exponential_model(prev_array[i], response_R, timestep_size, serial_interval)
 
 
 
 	fig, ax = plt.subplots()
 
+	ax.plot(t_range, prev_array[:-1], label = 'Prevalence')
 
-	ax.plot(t_range, nE, label = 'Number of contagious persons')
+	ax.set_xlabel('Days since start of the outbreak')
+	ax.set_ylabel('Number of contagious persons (prevalence) per million')
 
 	ax.grid(linestyle = ':')
 
-	plt.savefig('Government_response_outcome_simple.png', dpi = 200, bbox_inches = 'tight')
+	plt.savefig('Government_response_outcome_simple_1.png', dpi = 200, bbox_inches = 'tight')
 	plt.close()
 
 def government_response_results_SEIRD():
@@ -163,34 +245,21 @@ def government_response_results_SEIRD():
 def main():
 	# plotIRLstats()
 
-	# government_response_results()
+	government_response_results_simple()
+
+	'''
+	df_prevalence, df_R0 = load_prevalence_R0_data()
+	df_deaths = load_deathdata()
 
 	### determine mortality rate per unit time mu
 	### mu = 1/I dD/dt
-	df_prevalence, df_R0 = load_prevalence_R0_data()
+	mu_mean = get_mean_mu(df_prevalence, df_deaths) #days^-1
 
-	df_deaths = load_deathdata()
-
-	#slice the dD/dt between dates
-	mask = (df_deaths.index > '2020-02-27') & (df_deaths.index <= '2020-08-10')
-	df_deaths = df_deaths.loc[mask]
-
-	#do the same for the prevalence I
-	mask = (df_prevalence.index> '2020-02-27') & (df_prevalence.index <= '2020-08-10')
-	df_prevalence = df_prevalence.loc[mask]
-
-	df_mu = df_deaths[['Amount']].merge(df_prevalence[['prev_avg']], right_index = True, left_index = True)
-
-	#now calculate the mortality rate per unit time
-	df_mu['mu'] = df_mu['Amount']/df_mu['prev_avg'] #day^-1
-
-	fig, ax = plt.subplots()
-
-	ax.plot(df_mu.index, df_mu['mu'])
-
-	ax.grid(linestyle = ':')
-
-	plt.savefig('mu.png')
+	### set other model parameters
+	# period of being not contagious
+	a = 1/8.3 #days^-1
+	#
+	'''
 
 
 if __name__ == '__main__':
