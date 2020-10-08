@@ -25,7 +25,7 @@ def downloadSave(url, file_name, check_file_exists = False):
 		with urllib.request.urlopen(url) as response, open(file_name, 'wb') as out_file:
 			shutil.copyfileobj(response, out_file)
 
-def loaddata():
+def load_prevalence_R0_data():
 	url_prevalence = 'https://data.rivm.nl/covid-19/COVID-19_prevalentie.json'
 	url_R0 = 'https://data.rivm.nl/covid-19/COVID-19_reproductiegetal.json'
 
@@ -38,7 +38,38 @@ def loaddata():
 	df_prevalence = pd.read_json(fname_prevalence)
 	df_R0 = pd.read_json(fname_R0)
 
+	df_prevalence.set_index('Date', inplace = True)
+
 	return df_prevalence, df_R0
+
+def load_deathdata():
+	df_deaths = pd.read_csv(f'{dataloc}deaths_per_day.csv', sep = ';')
+	#add year
+	df_deaths['Datum van overlijden'] += ' 2020'
+	#replace month with number
+	dutchmonths = {
+					'feb': 2,
+					'mrt': 3,
+					'apr': 4,
+					'mei': 5,
+					'jun': 6,
+					'jul': 7,
+					'aug': 8,
+					'sep': 9,
+					'okt': 10,
+					'nov': 11,
+					'dec': 12
+					}
+	for monthname, monthidx in zip(dutchmonths.keys(), dutchmonths.values()):
+		df_deaths['Datum van overlijden'] = df_deaths['Datum van overlijden'].str.replace(monthname, str(monthidx))
+	df_deaths['Datum van overlijden'] = pd.to_datetime(df_deaths['Datum van overlijden'], format = '%d %m %Y')
+
+	#rename columns
+	df_deaths = df_deaths.rename(columns = {'Datum van overlijden': 'Date', 't/m afgelopen week': 'Amount'})
+
+	df_deaths.set_index('Date', inplace = True)
+
+	return df_deaths
 
 def exponential_model(nE_0, R0, t, tau):
 	return nE_0 * R0**(t/tau)
@@ -75,7 +106,7 @@ def plotIRLstats():
 	plt.savefig('coronadashboard_measurements.png', dpi = 200, bbox_inches = 'tight')
 
 def government_response_results_simple():
-	df_prevalence, df_R0 = loaddata()
+	df_prevalence, df_R0 = load_prevalence_R0_data()
 
 	peak_prev = 200000
 
@@ -100,7 +131,7 @@ def government_response_results_simple():
 	plt.close()
 
 def government_response_results_SEIRD():
-	df_prevalence, df_R0 = loaddata()
+	df_prevalence, df_R0 = load_prevalence_R0_data()
 
 	peak_prev = 200000
 
@@ -134,32 +165,32 @@ def main():
 
 	# government_response_results()
 
-	#determine mortality rate per unit time mu
-	#mu = 1/I dD/dt
-	# df_prevalence, df_R0 = loaddata()
+	### determine mortality rate per unit time mu
+	### mu = 1/I dD/dt
+	df_prevalence, df_R0 = load_prevalence_R0_data()
 
-	df_deaths = pd.read_csv(f'{dataloc}deaths_per_day.csv', sep = ';')
-	#add year
-	df_deaths['Datum van overlijden'] += ' 2020'
-	#replace month with number
-	dutchmonths = {
-					'feb': 2,
-					'mrt': 3,
-					'apr': 4,
-					'mei': 5,
-					'jun': 6,
-					'jul': 7,
-					'aug': 8,
-					'sep': 9,
-					'okt': 10,
-					'nov': 11,
-					'dec': 12
-					}
-	for monthname, monthidx in zip(dutchmonths.keys(), dutchmonths.values()):
-		df_deaths['Datum van overlijden'] = df_deaths['Datum van overlijden'].str.replace(monthname, str(monthidx))
-	df_deaths['Datum van overlijden'] = pd.to_datetime(df_deaths['Datum van overlijden'], format = '%d %m %Y')
+	df_deaths = load_deathdata()
 
-	print(df_deaths['Datum van overlijden'])
+	#slice the dD/dt between dates
+	mask = (df_deaths.index > '2020-02-27') & (df_deaths.index <= '2020-08-10')
+	df_deaths = df_deaths.loc[mask]
+
+	#do the same for the prevalence I
+	mask = (df_prevalence.index> '2020-02-27') & (df_prevalence.index <= '2020-08-10')
+	df_prevalence = df_prevalence.loc[mask]
+
+	df_mu = df_deaths[['Amount']].merge(df_prevalence[['prev_avg']], right_index = True, left_index = True)
+
+	#now calculate the mortality rate per unit time
+	df_mu['mu'] = df_mu['Amount']/df_mu['prev_avg'] #day^-1
+
+	fig, ax = plt.subplots()
+
+	ax.plot(df_mu.index, df_mu['mu'])
+
+	ax.grid(linestyle = ':')
+
+	plt.savefig('mu.png')
 
 
 if __name__ == '__main__':
