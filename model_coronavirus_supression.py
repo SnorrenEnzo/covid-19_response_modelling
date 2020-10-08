@@ -13,13 +13,19 @@ dataloc = './Data/'
 n_inhabitants_NL = 17455552
 per_million_factor = 1e6/n_inhabitants_NL
 
+#number of days after which an infected person becomes infectuous themselves
+serial_interval = 5
+
+#number of days between infection and recovery
+time_till_recovery = 14
+
 def downloadSave(url, file_name, check_file_exists = False):
 	if not os.path.exists(file_name):
 		print('Downloading file...')
 		with urllib.request.urlopen(url) as response, open(file_name, 'wb') as out_file:
 			shutil.copyfileobj(response, out_file)
 
-def plotIRLstats():
+def loaddata():
 	url_prevalence = 'https://data.rivm.nl/covid-19/COVID-19_prevalentie.json'
 	url_R0 = 'https://data.rivm.nl/covid-19/COVID-19_reproductiegetal.json'
 
@@ -31,6 +37,14 @@ def plotIRLstats():
 
 	df_prevalence = pd.read_json(fname_prevalence)
 	df_R0 = pd.read_json(fname_R0)
+
+	return df_prevalence, df_R0
+
+def exponential_model(nE_0, R0, t, tau):
+	return nE_0 * R0**(t/tau)
+
+def plotIRLstats():
+	df_prevalence, df_R0 = loaddata()
 
 	fig, ax1 = plt.subplots()
 	ax2 = ax1.twinx()
@@ -53,13 +67,100 @@ def plotIRLstats():
 
 	fig.autofmt_xdate()
 
-	ax1.set_ylabel('COVID-19 Prevalence (estimated active cases per million)')
+	ax1.set_ylabel('Prevalence (estimated active cases per million)')
 	ax2.set_ylabel(r'Basic reproductive number $R_0$')
+
+	ax1.set_title('COVID-19 statistics of the Netherlands')
 
 	plt.savefig('coronadashboard_measurements.png', dpi = 200, bbox_inches = 'tight')
 
+def government_response_results_simple():
+	df_prevalence, df_R0 = loaddata()
+
+	peak_prev = 200000
+
+	response_R = 0.9
+
+	#time range in days
+	t_range = np.arange(0, 150, 1)
+
+	#number of exposed persons
+	nE = exponential_model(peak_prev, response_R, t_range, serial_interval)
+
+
+
+	fig, ax = plt.subplots()
+
+
+	ax.plot(t_range, nE, label = 'Number of contagious persons')
+
+	ax.grid(linestyle = ':')
+
+	plt.savefig('Government_response_outcome_simple.png', dpi = 200, bbox_inches = 'tight')
+	plt.close()
+
+def government_response_results_SEIRD():
+	df_prevalence, df_R0 = loaddata()
+
+	peak_prev = 200000
+
+	response_R = 0.9
+
+	#number of infections per unit time per person
+	infection_rate = 1.5
+	# non_contagious_rate = 1/
+
+	#time range in days
+	t_range = np.arange(0, 150, 1)
+
+	#number of exposed persons
+	nE = exponential_model(peak_prev, response_R, t_range, serial_interval)
+
+
+
+	fig, ax = plt.subplots()
+
+
+	ax.plot(t_range, nE, label = 'Number of contagious persons')
+
+	ax.grid(linestyle = ':')
+
+	plt.savefig('Government_response_outcome_complex.png', dpi = 200, bbox_inches = 'tight')
+	plt.close()
+
+
 def main():
-	plotIRLstats()
+	# plotIRLstats()
+
+	# government_response_results()
+
+	#determine mortality rate per unit time mu
+	#mu = 1/I dD/dt
+	# df_prevalence, df_R0 = loaddata()
+
+	df_deaths = pd.read_csv(f'{dataloc}deaths_per_day.csv', sep = ';')
+	#add year
+	df_deaths['Datum van overlijden'] += ' 2020'
+	#replace month with number
+	dutchmonths = {
+					'feb': 2,
+					'mrt': 3,
+					'apr': 4,
+					'mei': 5,
+					'jun': 6,
+					'jul': 7,
+					'aug': 8,
+					'sep': 9,
+					'okt': 10,
+					'nov': 11,
+					'dec': 12
+					}
+	for monthname, monthidx in zip(dutchmonths.keys(), dutchmonths.values()):
+		df_deaths['Datum van overlijden'] = df_deaths['Datum van overlijden'].str.replace(monthname, str(monthidx))
+	df_deaths['Datum van overlijden'] = pd.to_datetime(df_deaths['Datum van overlijden'], format = '%d %m %Y')
+
+	print(df_deaths['Datum van overlijden'])
+
 
 if __name__ == '__main__':
 	main()
