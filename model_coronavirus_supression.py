@@ -187,14 +187,14 @@ def government_response_results_simple():
 
 	### tweakables
 	starting_prev = 200 #per million
-	prevalence_threshold = 5000 #per million
+	prevalence_threshold = 2500 #per million
 
 	upward_R = 1.3
-	downward_R = 0.8
+	downward_R = 0.9
 
 	#time range in days
 	timestep_size = 1
-	t_range = np.arange(0, 220, timestep_size)
+	t_range = np.arange(0, 240, timestep_size)
 
 	#store prevalence and R0
 	prev_array = np.zeros(len(t_range) + 1)
@@ -211,12 +211,26 @@ def government_response_results_simple():
 		prev_array[i+1] = exponential_model(prev_array[i], response_R_array[i], timestep_size, serial_interval)
 
 
+	#determine duration of light (R > 1) and heavy (R < 1) lockdown
+	heavy_start = np.argmax(response_R_array < 1)
+	heavy_end = np.argmax(response_R_array[heavy_start:] > 1) + heavy_start
+	light_start = heavy_end
+	light_end = np.argmax(response_R_array[light_start:] < 1) + light_start
+
+	heavy_duration = heavy_end - heavy_start
+	light_duration = light_end - light_start
+
+	print(f'Duration of light lockdown: {light_duration} days')
+	print(f'Duration of heavy lockdown: {heavy_duration} days')
+	print(f'Light/heavy ratio: {light_duration/heavy_duration:0.03f}')
+
+
 	fig, ax1 = plt.subplots()
 
 	ax2 = ax1.twinx()
 
 	ln1 = ax1.plot(t_range, prev_array[:-1], label = 'Prevalence')
-	ln2 = ax2.plot(t_range, response_R_array[:-1], label = 'Reponse R', color = 'maroon')
+	ln2 = ax2.plot(t_range, response_R_array[:-1], label = 'Response R', color = 'maroon')
 
 	ax1.set_xlabel('Days since start of the outbreak')
 	ax1.set_ylabel('Number of contagious persons (prevalence) per million')
