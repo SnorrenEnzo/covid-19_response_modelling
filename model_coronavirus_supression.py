@@ -193,11 +193,11 @@ def exponential_model(nE_0, R0, t, tau):
 def linear_model(x, a, b):
 	return a*x + b
 
-def fit_model(model, xdata, ydata, p0 = (1, 1)):
+def fit_model(model, xdata, ydata, p0 = None, sigma = None):
 	#returns the best values for the parameters of the model in the array popt
 	#the array pcov contains the estimated covariance of popt
 	#p0 are the values for the variables it will start to look
-	popt, pcov = curve_fit(model, xdata, ydata, p0 = p0)
+	popt, pcov = curve_fit(model, xdata, ydata, p0 = p0, sigma = sigma)
 	#Then the standard deviation is given by:
 	perr = np.sqrt(np.diag(pcov))
 	#get the residuals:
@@ -470,43 +470,68 @@ def stringency_R_correlation():
 	plt.close()
 
 def mobility_R_correlation():
-	df_response = load_government_response_data()
-	df_prevalence, df_R0 = load_prevalence_R0_data()
+	df_prevalence, df_R = load_prevalence_R0_data()
+	df_google_mob = load_mobility_data()
+
+	#determine error of R
+	df_R['Rt_abs_error'] = ((df_R['Rt_low'] - df_R['Rt_avg']).abs() + (df_R['Rt_up'] - df_R['Rt_avg']).abs())/2
 
 	#merge datasets
-	df_reponse_results = df_response.merge(df_R0[['Rt_avg']], right_index = True, left_index = True)
+	df_mob_R = df_google_mob.merge(df_R[['Rt_avg', 'Rt_abs_error']], right_index = True, left_index = True)
 
 	#select date range
-	mask = (df_reponse_results.index > '2020-02-16') & (df_reponse_results.index <= '2020-09-18')
-	df_reponse_results = df_reponse_results.loc[mask]
-
-	### fit a linear model
-	#select only high stringency to reflect the current day situation
-	high_stringency_mask = df_reponse_results['StringencyIndex'] > 30
-	popt, perr, r_squared = fit_model(linear_model,
-						df_reponse_results.loc[high_stringency_mask]['StringencyIndex'],
-						df_reponse_results.loc[high_stringency_mask]['Rt_avg'])
-
+	mask = (df_mob_R.index > '2020-04-01') & (df_mob_R.index <= '2020-09-18')
+	df_mob_R = df_mob_R.loc[mask]
 
 
 	### plot results
-	fig, ax = plt.subplots()
+	fig, axs = plt.subplots(ncols = 3, nrows = 2, sharex = 'col', sharey = 'row', figsize = (12, 8), gridspec_kw = {'hspace': 0.1, 'wspace': 0})
+	axs = axs.flatten()
 
-	ax.scatter(df_reponse_results['StringencyIndex'], df_reponse_results['Rt_avg'], color = 'maroon', alpha = 0.6, s = 8, label = 'Measurements')
+	key_names = {
+	'retail_recreation': 'Retail & recreation',
+	'grocery_pharmacy': 'Grocery & pharmacy',
+	'parks': 'Parks',
+	'transit_stations': 'Transit stations',
+	'workplaces': 'Workplaces',
+	'residential': 'Residential'
+	}
 
-	#plot the model
-	xpoints = np.linspace(np.min(df_reponse_results.loc[high_stringency_mask]['StringencyIndex']), np.max(df_reponse_results.loc[high_stringency_mask]['StringencyIndex']), num = 500)
-	ax.plot(xpoints, linear_model(xpoints, *popt), label = r'Fit ($R^2 = $' + f'{r_squared:0.03f})', color = 'black')
 
-	ax.set_xlabel('Oxford Stringency Index')
-	ax.set_ylabel(f'$R$')
+	for i, k in enumerate(key_names.keys()):
+		#smooth the data
+		df_mob_R[k + '_smooth'] = np.convolve(df_mob_R[k], average_kernel(size = 7), mode = 'same')
 
-	ax.grid(linestyle = ':')
-	ax.legend(loc = 'best')
+		key = k + '_smooth'
 
-	ax.set_title(r'$R$ versus stringency index of Dutch coronavirus reponse')
+		#plot data
+		axs[i].scatter(df_mob_R[key], df_mob_R['Rt_avg'], color = 'maroon', alpha = 0.6, s = 8, label = key_names[k])
 
-	plt.savefig('Stringency_R_correlation.png', dpi = 200, bbox_inches = 'tight')
+		### fit a linear model
+		popt, perr, r_squared = fit_model(linear_model,
+							df_mob_R[key],
+							df_mob_R['Rt_avg'],
+							sigma = np.array(df_mob_R['Rt_abs_error']))
+
+		#plot the model
+		xpoints = np.linspace(np.min(df_mob_R[key]), np.max(df_mob_R[key]), num = 500)
+		axs[i].plot(xpoints, linear_model(xpoints, *popt), label = r'Fit ($R^2 = $' + f'{r_squared:0.03f})', color = 'black')
+
+		axs[i].set_title(f'{key_names[k]}')
+
+		# axs[i].set_xlabel('Mobility change relative to baseline [%]')
+		# axs[i].set_ylabel(r'$R$')
+
+		axs[i].grid(linestyle = ':')
+
+		if key == 'parks':
+			axs[i].set_xlim(right = 100)
+
+		axs[i].legend(loc = 'best')
+
+
+
+	plt.savefig('Mobility_R_correlation.png', dpi = 200, bbox_inches = 'tight')
 	plt.close()
 
 def main():
@@ -514,7 +539,7 @@ def main():
 
 	# government_response_results_simple()
 
-	plot_mobility()
+	mobility_R_correlation()
 
 	'''
 	df_prevalence, df_R0 = load_prevalence_R0_data()
