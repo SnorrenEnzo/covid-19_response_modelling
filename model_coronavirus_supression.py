@@ -279,7 +279,7 @@ def plot_mobility():
 	ax.legend(loc = 'best')
 	ax.xaxis.set_tick_params(rotation = 45)
 
-	plt.savefig('Moblitiy_change.png', dpi = 200, bbox_inches = 'tight')
+	plt.savefig('Mobility_change.png', dpi = 200, bbox_inches = 'tight')
 	plt.close()
 
 
@@ -528,6 +528,12 @@ def mobility_R_correlation():
 			axs[i].set_xlim(right = 100)
 
 		axs[i].legend(loc = 'best')
+
+	#frame for overall x and y labels
+	fig.add_subplot(111, frameon = False)
+	plt.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
+	plt.xlabel('Mobility change from baseline [%]')
+	plt.ylabel('$R$')
 
 
 
