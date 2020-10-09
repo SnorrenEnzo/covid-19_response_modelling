@@ -101,6 +101,59 @@ def load_government_response_data():
 
 	return df_response
 
+def load_mobility_data():
+	"""
+	Load Apple and Google mobility data. Downloadable from:
+
+	Apple: https://covid19.apple.com/mobility
+	Google: https://www.google.com/covid19/mobility/
+
+	Apple data:
+	- driving
+	- transit
+	- walking
+
+	Google data:
+	- Retail and recreation
+	- Grocery and pharmacy
+	- Parks
+	- Transit stations
+	- Workplaces
+	- Residential
+	"""
+
+	#first load google data, this is the easiest
+	google_mobility_fname = f'{dataloc}google_2020_NL_Region_Mobility_Report.csv'
+
+	google_col_rename = {
+		'retail_and_recreation_percent_change_from_baseline': 'retail_recreation',
+		'grocery_and_pharmacy_percent_change_from_baseline': 'grocery_pharmacy',
+		'parks_percent_change_from_baseline': 'parks',
+		'transit_stations_percent_change_from_baseline': 'transit_stations',
+		'workplaces_percent_change_from_baseline': 'workplaces',
+		'residential_percent_change_from_baseline': 'residential',
+		'date': 'date',
+		'sub_region_1': 'region'
+	}
+
+	df_google_mob = pd.read_csv(google_mobility_fname, usecols = list(google_col_rename.keys()))
+	df_google_mob = df_google_mob.rename(columns = google_col_rename)
+
+	#only select country wide data
+	country_wide_mask = df_google_mob['region'].isnull()
+	df_google_mob = df_google_mob.loc[country_wide_mask]
+	del df_google_mob['region']
+
+	#convert date to datetime and set as index
+	df_google_mob['date'] = pd.to_datetime(df_google_mob['date'], format = '%Y-%m-%d')
+	df_google_mob.set_index('date', inplace = True)
+
+
+	return df_google_mob
+
+def average_kernel(size = 7):
+	return np.ones(size)/size
+
 def get_mean_mu(df_prevalence, df_deaths):
 	#slice the dD/dt between dates
 	mask = (df_deaths.index > '2020-02-27') & (df_deaths.index <= '2020-08-10')
@@ -190,6 +243,45 @@ def plotIRLstats():
 	ax1.set_title('COVID-19 statistics of the Netherlands')
 
 	plt.savefig('coronadashboard_measurements.png', dpi = 200, bbox_inches = 'tight')
+
+def plot_mobility():
+	df_google_mob = load_mobility_data()
+
+	#smooth the data
+	relevant_keys = [
+	'retail_recreation',
+	'grocery_pharmacy',
+	'parks',
+	'transit_stations',
+	'workplaces',
+	'residential'
+	]
+
+	for key in relevant_keys:
+		df_google_mob[key + '_smooth'] = np.convolve(df_google_mob[key], average_kernel(size = 7), mode = 'same')
+
+	fig, ax = plt.subplots()
+
+	ax.plot(df_google_mob.index, df_google_mob['retail_recreation_smooth'], label = 'Retail & recreation')
+	ax.plot(df_google_mob.index, df_google_mob['grocery_pharmacy_smooth'], label = 'Grocery & pharmacy')
+	ax.plot(df_google_mob.index, df_google_mob['parks_smooth'], label = 'Parks')
+	ax.plot(df_google_mob.index, df_google_mob['transit_stations_smooth'], label = 'Transit stations')
+	ax.plot(df_google_mob.index, df_google_mob['workplaces_smooth'], label = 'Workplaces')
+	ax.plot(df_google_mob.index, df_google_mob['residential_smooth'], label = 'Residential')
+
+	ax.set_ylim(-100, 100)
+	ax.grid(linestyle = ':')
+
+	ax.set_ylabel('Mobility change relative to baseline [%]')
+
+	ax.set_title('Mobility change in the Netherlands based on Google data')
+
+	ax.legend(loc = 'best')
+	ax.xaxis.set_tick_params(rotation = 45)
+
+	plt.savefig('Moblitiy_change.png', dpi = 200, bbox_inches = 'tight')
+	plt.close()
+
 
 def government_response_results_simple():
 	"""
@@ -377,12 +469,52 @@ def stringency_R_correlation():
 	plt.savefig('Stringency_R_correlation.png', dpi = 200, bbox_inches = 'tight')
 	plt.close()
 
+def mobility_R_correlation():
+	df_response = load_government_response_data()
+	df_prevalence, df_R0 = load_prevalence_R0_data()
+
+	#merge datasets
+	df_reponse_results = df_response.merge(df_R0[['Rt_avg']], right_index = True, left_index = True)
+
+	#select date range
+	mask = (df_reponse_results.index > '2020-02-16') & (df_reponse_results.index <= '2020-09-18')
+	df_reponse_results = df_reponse_results.loc[mask]
+
+	### fit a linear model
+	#select only high stringency to reflect the current day situation
+	high_stringency_mask = df_reponse_results['StringencyIndex'] > 30
+	popt, perr, r_squared = fit_model(linear_model,
+						df_reponse_results.loc[high_stringency_mask]['StringencyIndex'],
+						df_reponse_results.loc[high_stringency_mask]['Rt_avg'])
+
+
+
+	### plot results
+	fig, ax = plt.subplots()
+
+	ax.scatter(df_reponse_results['StringencyIndex'], df_reponse_results['Rt_avg'], color = 'maroon', alpha = 0.6, s = 8, label = 'Measurements')
+
+	#plot the model
+	xpoints = np.linspace(np.min(df_reponse_results.loc[high_stringency_mask]['StringencyIndex']), np.max(df_reponse_results.loc[high_stringency_mask]['StringencyIndex']), num = 500)
+	ax.plot(xpoints, linear_model(xpoints, *popt), label = r'Fit ($R^2 = $' + f'{r_squared:0.03f})', color = 'black')
+
+	ax.set_xlabel('Oxford Stringency Index')
+	ax.set_ylabel(f'$R$')
+
+	ax.grid(linestyle = ':')
+	ax.legend(loc = 'best')
+
+	ax.set_title(r'$R$ versus stringency index of Dutch coronavirus reponse')
+
+	plt.savefig('Stringency_R_correlation.png', dpi = 200, bbox_inches = 'tight')
+	plt.close()
+
 def main():
 	# plotIRLstats()
 
 	# government_response_results_simple()
 
-	stringency_R_correlation()
+	plot_mobility()
 
 	'''
 	df_prevalence, df_R0 = load_prevalence_R0_data()
