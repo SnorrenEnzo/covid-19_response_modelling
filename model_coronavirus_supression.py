@@ -1,6 +1,8 @@
 import numpy as np
 import pandas as pd
 
+from scipy.optimize import curve_fit
+
 import matplotlib.pyplot as plt
 
 import urllib.request
@@ -77,6 +79,28 @@ def load_deathdata():
 
 	return df_deaths
 
+def load_government_response_data():
+	url = 'https://raw.githubusercontent.com/OxCGRT/covid-policy-tracker/master/data/OxCGRT_latest.csv'
+	fname = f'{dataloc}OxCGRT_latest.csv'
+
+	downloadSave(url, fname, check_file_exists = True)
+
+
+	df_response = pd.read_csv(fname)
+
+	#filter on the netherlands
+	df_response = df_response.loc[df_response['CountryCode'] == 'NLD']
+
+	#select desired columns
+	df_response = df_response[['Date', 'StringencyIndex']]
+
+	#read dates
+	df_response['Date'] = pd.to_datetime(df_response['Date'], format = '%Y%m%d')
+
+	df_response.set_index('Date', inplace = True)
+
+	return df_response
+
 def get_mean_mu(df_prevalence, df_deaths):
 	#slice the dD/dt between dates
 	mask = (df_deaths.index > '2020-02-27') & (df_deaths.index <= '2020-08-10')
@@ -113,6 +137,25 @@ def get_mean_mu(df_prevalence, df_deaths):
 def exponential_model(nE_0, R0, t, tau):
 	return nE_0 * R0**(t/tau)
 
+def linear_model(x, a, b):
+	return a*x + b
+
+def fit_model(model, xdata, ydata, p0 = (1, 1)):
+	#returns the best values for the parameters of the model in the array popt
+	#the array pcov contains the estimated covariance of popt
+	#p0 are the values for the variables it will start to look
+	popt, pcov = curve_fit(model, xdata, ydata, p0 = p0)
+	#Then the standard deviation is given by:
+	perr = np.sqrt(np.diag(pcov))
+	#get the residuals:
+	residuals = ydata- model(xdata, *popt)
+	#to get R^2:
+	ss_res = np.sum(residuals**2)
+	ss_tot = np.sum((ydata-np.mean(ydata))**2)
+	r_squared = 1 - (ss_res / ss_tot)
+
+	return popt, perr, r_squared
+
 def plotIRLstats():
 	df_prevalence, df_R0 = load_prevalence_R0_data()
 
@@ -136,6 +179,8 @@ def plotIRLstats():
 
 	ax1.grid(linestyle = ':', axis = 'x')
 	ax2.grid(linestyle = ':', axis = 'y')
+
+	ax1.xaxis.set_tick_params(rotation = 45)
 
 	# fig.autofmt_xdate()
 
@@ -184,17 +229,18 @@ def government_response_results_simple():
 
 	df_prevalence, df_R0 = load_prevalence_R0_data()
 
+	response_delay = 14
 
 	### tweakables
 	starting_prev = 200 #per million
 	prevalence_threshold = 2500 #per million
 
-	upward_R = 1.3
-	downward_R = 0.9
+	upward_R = 1.2
+	downward_R = 0.7
 
 	#time range in days
 	timestep_size = 1
-	t_range = np.arange(0, 240, timestep_size)
+	t_range = np.arange(0, 280, timestep_size)
 
 	#store prevalence and R0
 	prev_array = np.zeros(len(t_range) + 1)
@@ -205,7 +251,7 @@ def government_response_results_simple():
 	day_measures_taken = None
 	for i, t in enumerate(t_range):
 		#calculate response, basically changing the R in the future
-		response_R_array[i:] = response_model_1(prev_array[i], prevalence_threshold, response_R_array[i:], t_range[i:], response_delay = 14, upward_R = upward_R, downward_R = downward_R)
+		response_R_array[i:] = response_model_1(prev_array[i], prevalence_threshold, response_R_array[i:], t_range[i:], response_delay = response_delay, upward_R = upward_R, downward_R = downward_R)
 
 		#number of exposed persons
 		prev_array[i+1] = exponential_model(prev_array[i], response_R_array[i], timestep_size, serial_interval)
@@ -220,12 +266,14 @@ def government_response_results_simple():
 	heavy_duration = heavy_end - heavy_start
 	light_duration = light_end - light_start
 
+	light_heavy_ratio = light_duration/heavy_duration
+
 	print(f'Duration of light lockdown: {light_duration} days')
 	print(f'Duration of heavy lockdown: {heavy_duration} days')
-	print(f'Light/heavy ratio: {light_duration/heavy_duration:0.03f}')
+	print(f'Light/heavy ratio: {light_heavy_ratio:0.03f}')
 
 
-	fig, ax1 = plt.subplots()
+	fig, ax1 = plt.subplots(figsize = (7, 6))
 
 	ax2 = ax1.twinx()
 
@@ -236,6 +284,19 @@ def government_response_results_simple():
 	ax1.set_ylabel('Number of contagious persons (prevalence) per million')
 	ax2.set_ylabel(r'$R$')
 
+	ax1.set_title(f'Simple lockdown scenario')
+
+	#add caption
+	caption = f'Scenario with light lockdown R = {upward_R}, heavy lockdown R = {downward_R}. ' \
+				+ f'A response is\ntriggered at {prevalence_threshold} cases per million, taking ' \
+				+ f'{response_delay} days to produce results.\n' \
+				+ f'Resulting ratio of light to heavy lockdown duration: {light_heavy_ratio:0.03f} (higher is better).\n' \
+				 + 'Modelling: simple exponential model with number of cases ' \
+				 + r'$n(t) = n(0) \cdot R^{\frac{t}{\tau}}$'
+	fig.text(0.1, 0.03, caption, ha = 'left')
+	#make space
+	fig.subplots_adjust(bottom = 0.25)
+
 	lns = ln1 + ln2
 	labs = [l.get_label() for l in lns]
 	ax2.legend(lns, labs, loc = 'best')
@@ -244,7 +305,7 @@ def government_response_results_simple():
 
 	ax1.grid(linestyle = ':')
 
-	plt.savefig('Government_response_outcome_simple_1.png', dpi = 200, bbox_inches = 'tight')
+	plt.savefig(f'Government_response_outcome_simple_1_{upward_R}_{downward_R}.png', dpi = 200, bbox_inches = 'tight')
 	plt.close()
 
 def government_response_results_SEIRD():
@@ -276,11 +337,52 @@ def government_response_results_SEIRD():
 	plt.savefig('Government_response_outcome_complex.png', dpi = 200, bbox_inches = 'tight')
 	plt.close()
 
+def stringency_R_correlation():
+	df_response = load_government_response_data()
+	df_prevalence, df_R0 = load_prevalence_R0_data()
+
+	#merge datasets
+	df_reponse_results = df_response.merge(df_R0[['Rt_avg']], right_index = True, left_index = True)
+
+	#select date range
+	mask = (df_reponse_results.index > '2020-02-16') & (df_reponse_results.index <= '2020-09-18')
+	df_reponse_results = df_reponse_results.loc[mask]
+
+	### fit a linear model
+	#select only high stringency to reflect the current day situation
+	high_stringency_mask = df_reponse_results['StringencyIndex'] > 30
+	popt, perr, r_squared = fit_model(linear_model,
+						df_reponse_results.loc[high_stringency_mask]['StringencyIndex'],
+						df_reponse_results.loc[high_stringency_mask]['Rt_avg'])
+
+
+
+	### plot results
+	fig, ax = plt.subplots()
+
+	ax.scatter(df_reponse_results['StringencyIndex'], df_reponse_results['Rt_avg'], color = 'maroon', alpha = 0.6, s = 8, label = 'Measurements')
+
+	#plot the model
+	xpoints = np.linspace(np.min(df_reponse_results.loc[high_stringency_mask]['StringencyIndex']), np.max(df_reponse_results.loc[high_stringency_mask]['StringencyIndex']), num = 500)
+	ax.plot(xpoints, linear_model(xpoints, *popt), label = r'Fit ($R^2 = $' + f'{r_squared:0.03f})', color = 'black')
+
+	ax.set_xlabel('Oxford Stringency Index')
+	ax.set_ylabel(f'$R$')
+
+	ax.grid(linestyle = ':')
+	ax.legend(loc = 'best')
+
+	ax.set_title(r'$R$ versus stringency index of Dutch coronavirus reponse')
+
+	plt.savefig('Stringency_R_correlation.png', dpi = 200, bbox_inches = 'tight')
+	plt.close()
 
 def main():
 	# plotIRLstats()
 
-	government_response_results_simple()
+	# government_response_results_simple()
+
+	stringency_R_correlation()
 
 	'''
 	df_prevalence, df_R0 = load_prevalence_R0_data()

@@ -14,6 +14,16 @@ Mobility data:
 - [Apple](https://covid19.apple.com/mobility)
 - [Google](https://www.google.com/covid19/mobility/)
 
+#### Government response
+
+[Overview](https://www.bsg.ox.ac.uk/research/research-projects/coronavirus-government-response-tracker)
+
+[Raw data](https://raw.githubusercontent.com/OxCGRT/covid-policy-tracker/master/data/OxCGRT_latest.csv)
+
+[Codebook](https://github.com/OxCGRT/covid-policy-tracker/blob/master/documentation/codebook.md) that indicates the meaning for various flags etc.
+
+[Single country single day API](https://covidtrackerapi.bsg.ox.ac.uk/api/v2/stringency/actions/NLD/2020-09-20)
+
 #### Detailed statistics
 Incubation period
 - 8.3 days, looks kind of exponential (or Poisson) [link](https://advances.sciencemag.org/content/6/33/eabc1202.full)
