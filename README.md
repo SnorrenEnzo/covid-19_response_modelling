@@ -4,6 +4,9 @@
 ### Data sources
 
 Number of contagious people (prevalence): [link](https://data.rivm.nl/covid-19/COVID-19_prevalentie.json)
+
+Number of positively tested people in the Netherlands, updated each day at 10:00 CEST: [link](https://data.rivm.nl/covid-19/COVID-19_aantallen_gemeente_per_dag.csv)
+
 Reproductive number: [link](https://data.rivm.nl/covid-19/COVID-19_reproductiegetal.json)
 
 More raw data: [link](https://coronadashboard.rijksoverheid.nl/verantwoording)
@@ -35,7 +38,7 @@ Days contagious after infection [link](https://www.theladders.com/career-advice/
 - Up to the 11 day
 
 ##### Parameters of the SEIRD model:
-Exposure period 1/a (NOT YET INFECTUIOUS, average, exponential distribution with parameter a):
+Exposure period 1/a (NOT YET INFECTIOUS, average, exponential distribution with parameter a):
 - Can't be really determined, let's set it to 2 days for now
 
 Average time of infection 1/beta (serial interval)

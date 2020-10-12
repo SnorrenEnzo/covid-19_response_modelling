@@ -4,10 +4,11 @@ import pandas as pd
 from scipy.optimize import curve_fit
 
 import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 
 import urllib.request
 import shutil
-import os
+import os, sys
 
 dataloc = './Data/'
 
@@ -22,10 +23,15 @@ serial_interval = 5
 time_till_recovery = 14
 
 def downloadSave(url, file_name, check_file_exists = False):
+	"""
+	Return True when a new file is downloaded
+	"""
 	if not os.path.exists(file_name):
 		print('Downloading file...')
 		with urllib.request.urlopen(url) as response, open(file_name, 'wb') as out_file:
 			shutil.copyfileobj(response, out_file)
+
+		return True
 
 def load_prevalence_R0_data():
 	url_prevalence = 'https://data.rivm.nl/covid-19/COVID-19_prevalentie.json'
@@ -150,6 +156,26 @@ def load_mobility_data():
 
 
 	return df_google_mob
+
+def load_daily_covid():
+	url_daily_covid = 'https://data.rivm.nl/covid-19/COVID-19_aantallen_gemeente_per_dag.csv'
+	fname_daily_covid = f'{dataloc}positieve_tests.csv'
+
+	newdownloaded = downloadSave(url_daily_covid, fname_daily_covid, check_file_exists = True)
+
+	#load only a few columns
+	df_daily_covid = pd.read_csv(fname_daily_covid, usecols = ['Date_of_publication', 'Total_reported', 'Hospital_admission', 'Deceased'], sep = ';')
+
+	#rename columns
+	df_daily_covid = df_daily_covid.rename(columns = {'Date_of_publication': 'Date'})
+
+	#convert to date
+	df_daily_covid['Date'] = pd.to_datetime(df_daily_covid['Date'], format = '%Y-%m-%d %H:%M:%S')
+
+	#aggregate over the dates
+	df_daily_covid = df_daily_covid.groupby(['Date']).sum()
+
+	return df_daily_covid
 
 def average_kernel(size = 7):
 	return np.ones(size)/size
@@ -281,7 +307,6 @@ def plot_mobility():
 
 	plt.savefig('Mobility_change.png', dpi = 200, bbox_inches = 'tight')
 	plt.close()
-
 
 def government_response_results_simple():
 	"""
@@ -540,12 +565,56 @@ def mobility_R_correlation():
 	plt.savefig('Mobility_R_correlation.png', dpi = 200, bbox_inches = 'tight')
 	plt.close()
 
+def plot_daily_results():
+	"""
+	Plot up to date test results
+	"""
+	df_daily_covid = load_daily_covid()
+
+	#select second wave of infections
+	mask = (df_daily_covid.index > '2020-08-01')
+	df_daily_covid = df_daily_covid.loc[mask]
+
+	fig, ax = plt.subplots()
+
+	ax.plot(df_daily_covid.index, df_daily_covid['Total_reported'])
+
+	ax.grid(linestyle = ':')
+
+	ax.set_xlabel('Meldingsdatum (niet datum van afname test)')
+	ax.set_ylabel('Aantal positieve tests')
+
+	ax.set_title('Aantal positieve SARS-CoV-2 tests in Nederland')
+
+	# ax.xaxis.set_tick_params(rotation = 45)
+	ax.xaxis.set_major_locator(mdates.AutoDateLocator(minticks = 3, maxticks = 6))
+	fig.autofmt_xdate()
+	myfmt = mdates.DateFormatter('%d-%m-%Y')
+	ax.xaxis.set_major_formatter(myfmt)
+
+	ax.set_ylim(0)
+
+	plt.savefig('Positieve_tests_tweede_golf.png', dpi = 200, bbox_inches = 'tight')
+	plt.close()
+
+	# print(load_daily_covid)
+
+def estimate_recent_prevalence():
+	"""
+	Estimate the recent prevalence based on the test positivity ratio
+	"""
+	df_daily_covid = load_daily_covid()
+
+	# print(load_daily_covid)
+
 def main():
 	# plotIRLstats()
 
 	# government_response_results_simple()
 
-	mobility_R_correlation()
+	# mobility_R_correlation()
+
+	plot_daily_results()
 
 	'''
 	df_prevalence, df_R0 = load_prevalence_R0_data()
