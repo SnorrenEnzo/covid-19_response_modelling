@@ -11,6 +11,8 @@ import shutil
 import os, sys
 
 dataloc = './Data/'
+plotloc = './Plots/'
+plotloc_government_response = './Gov_response_plots/'
 
 #source: https://www.cbs.nl/nl-nl/visualisaties/bevolkingsteller
 n_inhabitants_NL = 17455552
@@ -238,7 +240,7 @@ def fit_model(model, xdata, ydata, p0 = None, sigma = None):
 
 	return popt, perr, r_squared
 
-def plotIRLstats():
+def plot_prevalence_R():
 	df_prevalence, df_R0 = load_prevalence_R0_data()
 
 	print(np.nanmin(df_prevalence['prev_avg']))
@@ -271,7 +273,7 @@ def plotIRLstats():
 
 	ax1.set_title('COVID-19 statistics of the Netherlands')
 
-	plt.savefig('coronadashboard_measurements.png', dpi = 200, bbox_inches = 'tight')
+	plt.savefig(f'{plotloc}coronadashboard_prevalence_R.png', dpi = 200, bbox_inches = 'tight')
 
 def plot_mobility():
 	df_google_mob = load_mobility_data()
@@ -308,7 +310,7 @@ def plot_mobility():
 	ax.legend(loc = 'best')
 	ax.xaxis.set_tick_params(rotation = 45)
 
-	plt.savefig('Mobility_change.png', dpi = 200, bbox_inches = 'tight')
+	plt.savefig(f'{plotloc}Mobility_change.png', dpi = 200, bbox_inches = 'tight')
 	plt.close()
 
 def government_response_results_simple():
@@ -425,7 +427,7 @@ def government_response_results_simple():
 
 	ax1.grid(linestyle = ':')
 
-	plt.savefig(f'Government_response_outcome_simple_1_{upward_R}_{downward_R}.png', dpi = 200, bbox_inches = 'tight')
+	plt.savefig(f'{plotloc_government_response}Government_response_outcome_simple_1_{upward_R}_{downward_R}.png', dpi = 200, bbox_inches = 'tight')
 	plt.close()
 
 def government_response_results_SEIRD():
@@ -454,7 +456,7 @@ def government_response_results_SEIRD():
 
 	ax.grid(linestyle = ':')
 
-	plt.savefig('Government_response_outcome_complex.png', dpi = 200, bbox_inches = 'tight')
+	plt.savefig(f'{plotloc_government_response}Government_response_outcome_complex.png', dpi = 200, bbox_inches = 'tight')
 	plt.close()
 
 def stringency_R_correlation():
@@ -494,7 +496,7 @@ def stringency_R_correlation():
 
 	ax.set_title(r'$R$ versus stringency index of Dutch coronavirus reponse')
 
-	plt.savefig('Stringency_R_correlation.png', dpi = 200, bbox_inches = 'tight')
+	plt.savefig(f'{plotloc}Stringency_R_correlation.png', dpi = 200, bbox_inches = 'tight')
 	plt.close()
 
 def mobility_R_correlation():
@@ -565,7 +567,7 @@ def mobility_R_correlation():
 
 
 
-	plt.savefig('Mobility_R_correlation.png', dpi = 200, bbox_inches = 'tight')
+	plt.savefig(f'{plotloc}Mobility_R_correlation.png', dpi = 200, bbox_inches = 'tight')
 	plt.close()
 
 def plot_daily_results():
@@ -597,7 +599,7 @@ def plot_daily_results():
 
 	ax.set_ylim(0)
 
-	plt.savefig('Positieve_tests_tweede_golf.png', dpi = 200, bbox_inches = 'tight')
+	plt.savefig(f'{plotloc}Positieve_tests_tweede_golf.png', dpi = 200, bbox_inches = 'tight')
 	plt.close()
 
 	# print(load_daily_covid)
@@ -665,7 +667,7 @@ def estimate_recent_prevalence():
 
 	ax.set_title('Correlation between prevalence and number of cases reported per day,\nadjusted for incubation period and test delays (~11 days)')
 
-	plt.savefig('Prevalence_vs_positive_tests_correlation.png', dpi = 200, bbox_inches = 'tight')
+	plt.savefig(f'{plotloc}Prevalence_vs_positive_tests_correlation.png', dpi = 200, bbox_inches = 'tight')
 	plt.close()
 
 
@@ -711,19 +713,19 @@ def estimate_recent_prevalence():
 
 	ax.set_ylim(0)
 
-	plt.savefig('Prevalence_second_wave_with_predictions.png', dpi = 200, bbox_inches = 'tight')
+	plt.savefig(f'{plotloc}Prevalence_second_wave_with_predictions.png', dpi = 200, bbox_inches = 'tight')
 	plt.close()
 
 	#make predictions
 
 def main():
-	# plotIRLstats()
-
 	# government_response_results_simple()
 
 	# mobility_R_correlation()
 
-	estimate_recent_prevalence()
+	# estimate_recent_prevalence()
+
+	plot_prevalence_R()
 
 	'''
 	df_prevalence, df_R0 = load_prevalence_R0_data()
