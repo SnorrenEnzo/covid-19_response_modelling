@@ -34,6 +34,9 @@ def downloadSave(url, file_name, check_file_exists = False):
 		return True
 
 def load_prevalence_R0_data():
+	"""
+	Load data and return as estimated number of infectious people per million
+	"""
 	url_prevalence = 'https://data.rivm.nl/covid-19/COVID-19_prevalentie.json'
 	url_R0 = 'https://data.rivm.nl/covid-19/COVID-19_reproductiegetal.json'
 
@@ -604,8 +607,114 @@ def estimate_recent_prevalence():
 	Estimate the recent prevalence based on the test positivity ratio
 	"""
 	df_daily_covid = load_daily_covid()
+	df_prevalence, df_R0 = load_prevalence_R0_data()
 
-	# print(load_daily_covid)
+	df_daily_covid['Total_per_million'] = df_daily_covid['Total_reported'] * per_million_factor
+
+	### correct for the delay between the onset of symptoms and the result of the test
+	#for source of incubation period, see the readme
+	incubation_period = 8.3 #days
+	#test delay determined from anecdotal evidence
+	test_delay = 3 #days
+
+	#convert to int for easier data analysis (otherwise we need to interpolate to hours etc)
+	total_delay = int(incubation_period + test_delay)
+
+	df_daily_covid['test_delay'] = np.repeat(test_delay, len(df_daily_covid))
+
+	#apply the correction to the testing data
+	df_daily_covid.index = df_daily_covid.index - pd.Timedelta(f'{total_delay} day')
+
+	#select second wave of infections with the high test rate, but stop at the
+	#section where the prevalence flattens (seems unrealistic)
+	startdate = '2020-08-01'
+	enddate = '2020-09-18'
+	df_daily_covid_sel = df_daily_covid.loc[(df_daily_covid.index > startdate) & (df_daily_covid.index < enddate)]
+	df_prevalence_sel = df_prevalence.loc[(df_prevalence.index > startdate) & (df_prevalence.index < enddate)]
+
+	#discard days with too low number of positive tests per million for determining the correlation
+	test_pos_threshold = 40
+
+	startdate_for_cor = np.argmax(df_daily_covid_sel['Total_per_million'] > test_pos_threshold)
+	#datasets for determining correlation
+	df_daily_covid_cor = df_daily_covid_sel.loc[df_daily_covid_sel.index > startdate_for_cor]
+	df_prevalence_cor = df_prevalence_sel.loc[df_prevalence_sel.index > startdate_for_cor]
+
+	### determine correlation under the assumption that the testing environment
+	### so the number of tests, peoples readyness to test etc do not change
+	popt, perr, r_squared = fit_model(linear_model,
+						df_daily_covid_cor['Total_per_million'],
+						df_prevalence_cor['prev_avg'])
+
+
+	fig, ax = plt.subplots()
+
+	ax.scatter(df_daily_covid_sel['Total_per_million'], df_prevalence_sel['prev_avg'],
+					alpha = 0.6, color = 'black', s = 8)
+
+	#plot the model
+	xpoints = np.linspace(np.min(df_daily_covid_cor['Total_per_million']), np.max(df_daily_covid_cor['Total_per_million']), num = 500)
+	ax.plot(xpoints, linear_model(xpoints, *popt), label = r'Fit ($R^2 = $' + f'{r_squared:0.03f})', color = 'maroon')
+
+	ax.grid(linestyle = ':')
+
+	ax.legend(loc = 'best')
+
+	ax.set_xlabel('Number of cases per million reported per day')
+	ax.set_ylabel('Prevalence per million')
+
+	ax.set_title('Correlation between prevalence and number of cases reported per day,\nadjusted for incubation period and test delays (~11 days)')
+
+	plt.savefig('Prevalence_vs_positive_tests_correlation.png', dpi = 200, bbox_inches = 'tight')
+	plt.close()
+
+
+	### Now make predictions for the most recent data
+	#select the positive test data
+	df_daily_covid_pred = df_daily_covid.loc[df_daily_covid.index > enddate]
+	#make the predictions
+	df_daily_covid_pred['Prev_pred'] = linear_model(df_daily_covid_pred['Total_per_million'], *popt)
+
+	#append the last data point from the real data
+	df_prevalence_pred = df_daily_covid_pred[['Prev_pred']]
+	df_prevalence_pred = df_prevalence_pred.append(df_prevalence_sel.iloc[-1:][['prev_avg']].rename(columns = {'prev_avg': 'Prev_pred'}))
+	#then sort again
+	df_prevalence_pred = df_prevalence_pred.sort_index()
+
+	#now plot together with the old data
+	fig, ax = plt.subplots()
+
+	#old data
+	ax.plot(df_prevalence_sel.index, df_prevalence_sel['prev_avg'], label = 'Measurements', color = 'royalblue')
+	#show error bars
+	ax.fill_between(df_prevalence_sel.index, df_prevalence_sel['prev_low'], df_prevalence_sel['prev_up'], alpha = 0.4, color = 'royalblue')
+
+	#predictions
+	ax.plot(df_prevalence_pred.index, df_prevalence_pred['Prev_pred'], label = 'Prediction', color = 'maroon')
+
+	ax.grid(linestyle = ':')
+
+	ax.set_ylabel('Prevalence per million')
+
+	ax.set_title('COVID-19 estimated active cases in the Netherlands\nwith prediction of recent days')
+
+	ax.legend(loc = 'best')
+
+	# ax.xaxis.set_tick_params(rotation = 45)
+	# ax.xaxis.set_major_locator(mdates.AutoDateLocator(minticks = 3, maxticks = 6))
+	#set location of date ticks, as the automatic technique does not work
+	ax.set_xticks(pd.date_range(np.min(df_prevalence_sel.index), np.max(df_prevalence_pred.index), freq = 'W'))
+
+	fig.autofmt_xdate()
+	myfmt = mdates.DateFormatter('%d-%m-%Y')
+	ax.xaxis.set_major_formatter(myfmt)
+
+	ax.set_ylim(0)
+
+	plt.savefig('Prevalence_second_wave_with_predictions.png', dpi = 200, bbox_inches = 'tight')
+	plt.close()
+
+	#make predictions
 
 def main():
 	# plotIRLstats()
@@ -614,7 +723,7 @@ def main():
 
 	# mobility_R_correlation()
 
-	plot_daily_results()
+	estimate_recent_prevalence()
 
 	'''
 	df_prevalence, df_R0 = load_prevalence_R0_data()
