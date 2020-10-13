@@ -224,6 +224,9 @@ def exponential_model(nE_0, R0, t, tau):
 def linear_model(x, a, b):
 	return a*x + b
 
+def three_variables_linear_model(xdata, a, b, c, d):
+	return a*xdata[0] + b*xdata[1] + c*xdata[2] + d
+
 def fit_model(model, xdata, ydata, p0 = None, sigma = None):
 	#returns the best values for the parameters of the model in the array popt
 	#the array pcov contains the estimated covariance of popt
@@ -527,22 +530,80 @@ def mobility_R_correlation():
 	'residential': 'Residential'
 	}
 
+	### plot correlation between the different mobility metrics and R
+	if False:
+		for i, k in enumerate(key_names.keys()):
+			#smooth the data
+			df_mob_R[k + '_smooth'] = np.convolve(df_mob_R[k], average_kernel(size = 7), mode = 'same')
 
-	for i, k in enumerate(key_names.keys()):
-		#smooth the data
-		df_mob_R[k + '_smooth'] = np.convolve(df_mob_R[k], average_kernel(size = 7), mode = 'same')
+			key = k + '_smooth'
+
+			#plot data
+			axs[i].scatter(df_mob_R[key], df_mob_R['Rt_avg'], color = 'maroon', alpha = 0.6, s = 8, label = key_names[k])
+
+			### fit a linear model
+			popt, perr, r_squared = fit_model(linear_model,
+								df_mob_R[key],
+								df_mob_R['Rt_avg'],
+								sigma = np.array(df_mob_R['Rt_abs_error']))
+
+			#plot the model
+			xpoints = np.linspace(np.min(df_mob_R[key]), np.max(df_mob_R[key]), num = 500)
+			axs[i].plot(xpoints, linear_model(xpoints, *popt), label = r'Fit ($R^2 = $' + f'{r_squared:0.03f})', color = 'black')
+
+			axs[i].set_title(f'{key_names[k]}')
+
+			# axs[i].set_xlabel('Mobility change relative to baseline [%]')
+			# axs[i].set_ylabel(r'$R$')
+
+			axs[i].grid(linestyle = ':')
+
+			if key == 'parks':
+				axs[i].set_xlim(right = 100)
+
+			axs[i].legend(loc = 'best')
+
+		#frame for overall x and y labels
+		fig.add_subplot(111, frameon = False)
+		plt.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
+		plt.xlabel('Mobility change from baseline [%]')
+		plt.ylabel('$R$')
+
+		plt.savefig(f'{plotloc}Mobility_R_correlation.png', dpi = 200, bbox_inches = 'tight')
+		plt.close()
+
+	### combine the best correlating mobility metrics to predict R
+	if True:
+		for i, k in enumerate(key_names.keys()):
+			#smooth the data
+			df_mob_R[k + '_smooth'] = np.convolve(df_mob_R[k], average_kernel(size = 7), mode = 'same')
+
+		best_correlating_metrics = [
+			'retail_recreation',
+			'transit_stations',
+			'residential'
+		]
 
 		key = k + '_smooth'
 
 		#plot data
-		axs[i].scatter(df_mob_R[key], df_mob_R['Rt_avg'], color = 'maroon', alpha = 0.6, s = 8, label = key_names[k])
+		# axs[i].scatter(df_mob_R[key], df_mob_R['Rt_avg'], color = 'maroon', alpha = 0.6, s = 8, label = key_names[k])
+
+		#get the multiple parameters into a single array
+		xdata = [df_mob_R[k + '_smooth'] for k in best_correlating_metrics]
+
+		print(xdata[0])
+		print(len(xdata))
 
 		### fit a linear model
-		popt, perr, r_squared = fit_model(linear_model,
-							df_mob_R[key],
+		popt, perr, r_squared = fit_model(three_variables_linear_model,
+							xdata,
 							df_mob_R['Rt_avg'],
 							sigma = np.array(df_mob_R['Rt_abs_error']))
 
+		print(r_squared)
+
+		'''
 		#plot the model
 		xpoints = np.linspace(np.min(df_mob_R[key]), np.max(df_mob_R[key]), num = 500)
 		axs[i].plot(xpoints, linear_model(xpoints, *popt), label = r'Fit ($R^2 = $' + f'{r_squared:0.03f})', color = 'black')
@@ -559,16 +620,15 @@ def mobility_R_correlation():
 
 		axs[i].legend(loc = 'best')
 
-	#frame for overall x and y labels
-	fig.add_subplot(111, frameon = False)
-	plt.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
-	plt.xlabel('Mobility change from baseline [%]')
-	plt.ylabel('$R$')
+		#frame for overall x and y labels
+		fig.add_subplot(111, frameon = False)
+		plt.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
+		plt.xlabel('Mobility change from baseline [%]')
+		plt.ylabel('$R$')
 
-
-
-	plt.savefig(f'{plotloc}Mobility_R_correlation.png', dpi = 200, bbox_inches = 'tight')
-	plt.close()
+		plt.savefig(f'{plotloc}Mobility_R_correlation.png', dpi = 200, bbox_inches = 'tight')
+		plt.close()
+		'''
 
 def plot_daily_results():
 	"""
@@ -723,13 +783,13 @@ def estimate_recent_prevalence():
 def main():
 	# government_response_results_simple()
 
-	# mobility_R_correlation()
+	mobility_R_correlation()
 
 	# estimate_recent_prevalence()
 
 	# plot_prevalence_R()
 
-	plot_mobility()
+	# plot_mobility()
 
 	'''
 	df_prevalence, df_R0 = load_prevalence_R0_data()
