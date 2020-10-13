@@ -1,5 +1,9 @@
 ## Modelling the outcome of Dutch government coronavirus response
 
+### TODO:
+- Use more mobility data to co-predict R
+- Use sewage data to co-predict prevalence.
+- Correct the data of positive test results per day for the number of tests conducted.
 
 ### Data sources
 
@@ -13,9 +17,19 @@ More raw data: [link](https://coronadashboard.rijksoverheid.nl/verantwoording)
 
 A huge list of data sources: [link](https://www.databronnencovid19.nl/)
 
+Weekly update [link](https://www.rivm.nl/documenten/wekelijkse-update-epidemiologische-situatie-covid-19-in-nederland) with:
+- Number of tests performed per week
+- Infection context, like at home, at work, pub etc.
+
+#### Possible early predictors (for prevalence and R)
+
 Mobility data:
 - [Apple](https://covid19.apple.com/mobility)
 - [Google](https://www.google.com/covid19/mobility/)
+
+Sewage measurements:
+- [data](https://data.rivm.nl/covid-19/COVID-19_rioolwaterdata.csv)
+- [info](https://data.rivm.nl/geonetwork/srv/dut/catalog.search#/metadata/a2960b68-9d3f-4dc3-9485-600570cd52b9?tab=relations)
 
 #### Government response
 
@@ -52,6 +66,11 @@ Recovery time 1/gamma
 Mortality rate 1/mu
 - Not mentioned a lot. Can however be calculated using 1/I dD/dt
 	- dD/dt source: [link](https://www.rivm.nl/coronavirus-covid-19/grafieken)
+
+### Data visualization
+[covid-analytics.nl](https://covid-analytics.nl/population.html)
+
+[CoronaWatchNL](https://github.com/Sikerdebaard/CoronaWatchNL)
 
 ### Modelling
 
