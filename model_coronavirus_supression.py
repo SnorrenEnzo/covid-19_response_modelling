@@ -10,6 +10,9 @@ import urllib.request
 import shutil
 import os, sys
 
+from sklearn.linear_model import Ridge
+from sklearn.ensemble import AdaBoostRegressor
+
 dataloc = './Data/'
 plotloc = './Plots/'
 plotloc_government_response = './Gov_response_plots/'
@@ -583,25 +586,40 @@ def mobility_R_correlation():
 			'transit_stations',
 			'residential'
 		]
+		#get the multiple parameters into a single array
+		X = np.zeros((len(df_mob_R), len(best_correlating_metrics)))
+		for i in range(len(best_correlating_metrics)):
+			X[:,i] = np.array(df_mob_R[best_correlating_metrics[i] + '_smooth'])
 
-		key = k + '_smooth'
+		Y = np.array(df_mob_R['Rt_avg'])
+
+		weight = 1/np.array(df_mob_R['Rt_abs_error'])
+
+		#apply ridge regression, see here for more info:
+		#https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.Ridge.html#sklearn.linear_model.Ridge
+		# clf = Ridge(alpha = 1.)
+		clf = AdaBoostRegressor()
+		clf.fit(X, Y, sample_weight = weight)
+		# clf.fit(X, Y)
+
+		r_squared = clf.score(X, Y, sample_weight = weight)
+		# r_squared = clf.score(X, Y)
+
+		print(r_squared)
 
 		#plot data
 		# axs[i].scatter(df_mob_R[key], df_mob_R['Rt_avg'], color = 'maroon', alpha = 0.6, s = 8, label = key_names[k])
 
-		#get the multiple parameters into a single array
-		xdata = [df_mob_R[k + '_smooth'] for k in best_correlating_metrics]
-
-		print(xdata[0])
-		print(len(xdata))
 
 		### fit a linear model
+		'''
 		popt, perr, r_squared = fit_model(three_variables_linear_model,
 							xdata,
-							df_mob_R['Rt_avg'],
+							,
 							sigma = np.array(df_mob_R['Rt_abs_error']))
 
 		print(r_squared)
+		'''
 
 		'''
 		#plot the model
