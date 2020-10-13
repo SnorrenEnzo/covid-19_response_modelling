@@ -11,7 +11,7 @@ import shutil
 import os, sys
 
 from sklearn.linear_model import Ridge
-from sklearn.ensemble import AdaBoostRegressor
+from sklearn.ensemble import AdaBoostRegressor, RandomForestRegressor
 
 dataloc = './Data/'
 plotloc = './Plots/'
@@ -598,7 +598,10 @@ def mobility_R_correlation():
 		#apply ridge regression, see here for more info:
 		#https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.Ridge.html#sklearn.linear_model.Ridge
 		# clf = Ridge(alpha = 1.)
-		clf = AdaBoostRegressor()
+		#apply adaboost regression, see here for more info:
+		#https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.AdaBoostRegressor.html#sklearn.ensemble.AdaBoostRegressor
+		# clf = AdaBoostRegressor()
+		clf = RandomForestRegressor()
 		clf.fit(X, Y, sample_weight = weight)
 		# clf.fit(X, Y)
 
