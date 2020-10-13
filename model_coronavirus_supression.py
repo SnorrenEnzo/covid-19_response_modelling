@@ -290,6 +290,13 @@ def fit_model(model, xdata, ydata, p0 = None, sigma = None):
 
 	return popt, perr, r_squared
 
+def dataframes_to_NDarray(df, columns):
+	X = np.zeros((len(df), len(columns)))
+	for i in range(len(columns)):
+		X[:,i] = np.array(df[columns[i]])
+
+	return X
+
 
 def plot_prevalence_R():
 	df_prevalence, df_R0 = load_prevalence_R0_data()
@@ -775,6 +782,9 @@ def estimate_recent_prevalence():
 	df_prevalence, df_R0 = load_prevalence_R0_data()
 	df_sewage = load_sewage_data(smooth = True, shiftdates = False)
 
+	#determine error on prevalence
+	df_prevalence['prev_abs_error'] = ((df_prevalence['prev_low'] - df_prevalence['prev_avg']).abs() + (df_prevalence['prev_up'] - df_prevalence['prev_avg']).abs())/2
+
 	df_daily_covid['Total_per_million'] = df_daily_covid['Total_reported'] * per_million_factor
 
 	### correct for the delay between the onset of symptoms and the result of the test
@@ -791,36 +801,59 @@ def estimate_recent_prevalence():
 	#apply the correction to the testing data
 	df_daily_covid.index = df_daily_covid.index - pd.Timedelta(f'{total_delay} day')
 
+	#merge testing and sewage data
+	df_predictors = df_daily_covid.merge(df_sewage[['RNA_per_ml_smooth']], right_index = True, left_index = True)
+
 	#select second wave of infections with the high test rate, but stop at the
 	#section where the prevalence flattens (seems unrealistic)
 	startdate = '2020-08-01'
 	enddate = '2020-09-30'
-	df_daily_covid_sel = df_daily_covid.loc[(df_daily_covid.index > startdate) & (df_daily_covid.index < enddate)]
+	df_predictors_sel = df_predictors.loc[(df_predictors.index > startdate) & (df_predictors.index < enddate)]
 	df_prevalence_sel = df_prevalence.loc[(df_prevalence.index > startdate) & (df_prevalence.index < enddate)]
 
 	#discard days with too low number of positive tests per million for determining the correlation
 	test_pos_threshold = 40
 
-	startdate_for_cor = np.argmax(df_daily_covid_sel['Total_per_million'] > test_pos_threshold)
+	# startdate_for_cor = np.argmax(df_predictors_sel['Total_per_million'] > test_pos_threshold)
+	startdate_for_cor = '2020-08-10'
 	#datasets for determining correlation
-	df_daily_covid_cor = df_daily_covid_sel.loc[df_daily_covid_sel.index > startdate_for_cor]
+	df_predictors_cor = df_predictors_sel.loc[df_predictors_sel.index > startdate_for_cor]
 	df_prevalence_cor = df_prevalence_sel.loc[df_prevalence_sel.index > startdate_for_cor]
 
+	'''
 	### determine correlation under the assumption that the testing environment
 	### so the number of tests, peoples readyness to test etc do not change
 	popt, perr, r_squared = fit_model(linear_model,
 						df_daily_covid_cor['Total_per_million'],
 						df_prevalence_cor['prev_avg'])
+	'''
+	parameters_used = [
+	'Total_per_million',
+	'RNA_per_ml_smooth'
+	]
 
+	### get data into the shape required for sklearn functions
+	X = dataframes_to_NDarray(df_predictors_cor, parameters_used)
 
+	Y = np.array(df_prevalence_cor['prev_avg'])
+	weight = 1/np.array(df_prevalence_cor['prev_abs_error'])
+
+	### apply regression
+	clf = Ridge(alpha = 1.)
+	clf.fit(X, Y, sample_weight = weight)
+
+	r_squared = clf.score(X, Y, sample_weight = weight)
+
+	print(r_squared)
+	'''
 	fig, ax = plt.subplots()
 
-	ax.scatter(df_daily_covid_sel['Total_per_million'], df_prevalence_sel['prev_avg'],
+	ax.scatter(df_predictors_sel['Total_per_million'], df_prevalence_sel['prev_avg'],
 					alpha = 0.6, color = 'black', s = 8)
 
 	#plot the model
 	xpoints = np.linspace(np.min(df_daily_covid_cor['Total_per_million']), np.max(df_daily_covid_cor['Total_per_million']), num = 500)
-	ax.plot(xpoints, linear_model(xpoints, *popt), label = r'Fit ($R^2 = $' + f'{r_squared:0.03f})', color = 'maroon')
+	ax.plot(xpoints, clf.predict(xpoints), label = r'Fit ($R^2 = $' + f'{r_squared:0.03f})', color = 'maroon')
 
 	ax.grid(linestyle = ':')
 
@@ -833,16 +866,20 @@ def estimate_recent_prevalence():
 
 	plt.savefig(f'{plotloc}Prevalence_vs_positive_tests_correlation.png', dpi = 200, bbox_inches = 'tight')
 	plt.close()
-
+	'''
 
 	### Now make predictions for the most recent data
 	#select the positive test data
-	df_daily_covid_pred = df_daily_covid.loc[df_daily_covid.index > enddate]
+	df_predictors_pred = df_predictors.loc[df_predictors.index > enddate]
+	#get data in sklearn shape
+	Xpred = dataframes_to_NDarray(df_predictors_pred, parameters_used)
 	#make the predictions
-	df_daily_covid_pred['Prev_pred'] = linear_model(df_daily_covid_pred['Total_per_million'], *popt)
+	# df_predictors_pred['Prev_pred'] = linear_model(df_daily_covid_pred['Total_per_million'], *popt)
+	df_predictors_pred['Prev_pred'] = clf.predict(Xpred)
+
 
 	#append the last data point from the real data
-	df_prevalence_pred = df_daily_covid_pred[['Prev_pred']]
+	df_prevalence_pred = df_predictors_pred[['Prev_pred']]
 	df_prevalence_pred = df_prevalence_pred.append(df_prevalence_sel.iloc[-1:][['prev_avg']].rename(columns = {'prev_avg': 'Prev_pred'}))
 	#then sort again
 	df_prevalence_pred = df_prevalence_pred.sort_index()
@@ -856,7 +893,7 @@ def estimate_recent_prevalence():
 	ax.fill_between(df_prevalence_sel.index, df_prevalence_sel['prev_low'], df_prevalence_sel['prev_up'], alpha = 0.4, color = 'royalblue')
 
 	#predictions
-	ax.plot(df_prevalence_pred.index, df_prevalence_pred['Prev_pred'], label = 'Prediction', color = 'maroon')
+	ax.plot(df_prevalence_pred.index, df_prevalence_pred['Prev_pred'], label = f'Prediction ($R^2 = {r_squared:0.03f}$)', color = 'maroon')
 
 	ax.grid(linestyle = ':')
 

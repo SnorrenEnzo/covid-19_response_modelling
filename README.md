@@ -2,7 +2,6 @@
 
 ### TODO:
 - Use more mobility data to co-predict R
-- Use sewage data to co-predict prevalence.
 - Correct the data of positive test results per day for the number of tests conducted.
 
 ### Data sources
