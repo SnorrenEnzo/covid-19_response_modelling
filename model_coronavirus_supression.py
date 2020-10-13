@@ -185,7 +185,7 @@ def load_daily_covid():
 
 	return df_daily_covid
 
-def load_sewage_data():
+def load_sewage_data(smooth = False):
 
 	sewage_url = 'https://data.rivm.nl/covid-19/COVID-19_rioolwaterdata.csv'
 	sewage_fname = f'{dataloc}COVID-19_rioolwaterdata.csv'
@@ -202,7 +202,7 @@ def load_sewage_data():
 	df_sewage = df_sewage.rename(columns = {'Date_measurement': 'Date'})
 
 	#convert to date
-	df_sewage['Date'] = pd.to_datetime(df_sewage['Date'], format = '%Y-%m-%d %H:%M:%S')
+	df_sewage['Date'] = pd.to_datetime(df_sewage['Date'], format = '%Y-%m-%d')
 
 	df_sewage.set_index('Date', inplace = True)
 
@@ -212,7 +212,13 @@ def load_sewage_data():
 	#aggregate over the dates
 	df_sewage = df_sewage.groupby(['Date']).agg({'RNA_per_ml': 'mean', 'n_measurements': 'sum'})
 
+	#smooth data if desired
+	if smooth:
+		windowsize = 3
+		df_sewage['RNA_per_ml'] = df_sewage['RNA_per_ml'].rolling(windowsize).mean()
+
 	return df_sewage
+
 
 def average_kernel(size = 7):
 	return np.ones(size)/size
@@ -353,7 +359,7 @@ def plot_sewage():
 	"""
 	Plot measurements of SARS-CoV-2 RNA per ml measurements in sewage
 	"""
-	df_sewage = load_sewage_data()
+	df_sewage = load_sewage_data(smooth = True)
 
 	print(df_sewage.tail())
 
@@ -380,6 +386,44 @@ def plot_sewage():
 
 	plt.savefig(f'{plotloc}Sewage_measurements.png', dpi = 200, bbox_inches = 'tight')
 	plt.close()
+
+def plot_daily_results():
+	"""
+	Plot up to date test results
+	"""
+	df_daily_covid = load_daily_covid()
+
+	#select second wave of infections
+	mask = (df_daily_covid.index > '2020-08-01')
+	df_daily_covid = df_daily_covid.loc[mask]
+
+	print(df_daily_covid)
+
+	fig, ax = plt.subplots()
+
+	ax.plot(df_daily_covid.index, df_daily_covid['Total_reported'])
+
+	ax.grid(linestyle = ':')
+
+	ax.set_xlabel('Meldingsdatum (niet datum van afname test)')
+	ax.set_ylabel('Aantal positieve tests')
+
+	ax.set_title('Aantal positieve SARS-CoV-2 tests in Nederland')
+
+	# ax.xaxis.set_tick_params(rotation = 45)
+	ax.xaxis.set_major_locator(mdates.AutoDateLocator(minticks = 3, maxticks = 6))
+	fig.autofmt_xdate()
+	myfmt = mdates.DateFormatter('%d-%m-%Y')
+	ax.xaxis.set_major_formatter(myfmt)
+
+	ax.set_ylim(0)
+
+	plt.savefig(f'{plotloc}Positieve_tests_tweede_golf.png', dpi = 200, bbox_inches = 'tight')
+	plt.close()
+
+	# print(load_daily_covid)
+
+
 
 def government_response_results_simple():
 	"""
@@ -567,9 +611,11 @@ def stringency_R_correlation():
 	plt.savefig(f'{plotloc}Stringency_R_correlation.png', dpi = 200, bbox_inches = 'tight')
 	plt.close()
 
-def mobility_R_correlation():
+def estimate_recent_R():
 	df_prevalence, df_R = load_prevalence_R0_data()
 	df_google_mob = load_mobility_data()
+	df_sewage = load_sewage_data(smooth = True)
+
 
 	#determine error of R
 	df_R['Rt_abs_error'] = ((df_R['Rt_low'] - df_R['Rt_avg']).abs() + (df_R['Rt_up'] - df_R['Rt_avg']).abs())/2
@@ -713,42 +759,6 @@ def mobility_R_correlation():
 		plt.close()
 		'''
 
-def plot_daily_results():
-	"""
-	Plot up to date test results
-	"""
-	df_daily_covid = load_daily_covid()
-
-	#select second wave of infections
-	mask = (df_daily_covid.index > '2020-08-01')
-	df_daily_covid = df_daily_covid.loc[mask]
-
-	print(df_daily_covid)
-
-	fig, ax = plt.subplots()
-
-	ax.plot(df_daily_covid.index, df_daily_covid['Total_reported'])
-
-	ax.grid(linestyle = ':')
-
-	ax.set_xlabel('Meldingsdatum (niet datum van afname test)')
-	ax.set_ylabel('Aantal positieve tests')
-
-	ax.set_title('Aantal positieve SARS-CoV-2 tests in Nederland')
-
-	# ax.xaxis.set_tick_params(rotation = 45)
-	ax.xaxis.set_major_locator(mdates.AutoDateLocator(minticks = 3, maxticks = 6))
-	fig.autofmt_xdate()
-	myfmt = mdates.DateFormatter('%d-%m-%Y')
-	ax.xaxis.set_major_formatter(myfmt)
-
-	ax.set_ylim(0)
-
-	plt.savefig(f'{plotloc}Positieve_tests_tweede_golf.png', dpi = 200, bbox_inches = 'tight')
-	plt.close()
-
-	# print(load_daily_covid)
-
 def estimate_recent_prevalence():
 	"""
 	Estimate the recent prevalence based on the test positivity ratio
@@ -866,15 +876,15 @@ def estimate_recent_prevalence():
 def main():
 	# government_response_results_simple()
 
-	# mobility_R_correlation()
-
-	plot_sewage()
+	estimate_recent_R()
 
 	# estimate_recent_prevalence()
 
 	# plot_prevalence_R()
 
 	# plot_mobility()
+
+	# plot_sewage()
 
 	'''
 	df_prevalence, df_R0 = load_prevalence_R0_data()
