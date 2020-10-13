@@ -215,7 +215,7 @@ def load_sewage_data(smooth = False):
 	#smooth data if desired
 	if smooth:
 		windowsize = 3
-		df_sewage['RNA_per_ml'] = df_sewage['RNA_per_ml'].rolling(windowsize).mean()
+		df_sewage['RNA_per_ml_smooth'] = df_sewage['RNA_per_ml'].rolling(windowsize).mean()
 
 	return df_sewage
 
@@ -368,7 +368,8 @@ def plot_sewage():
 
 	ln1 = ax1.plot(df_sewage.index, df_sewage.n_measurements, color = 'navy', label = 'Number of measurements')
 
-	ln2 = ax2.plot(df_sewage.index, df_sewage.RNA_per_ml, color = 'maroon', label = 'Average RNA abundance')
+	ax2.scatter(df_sewage.index, df_sewage.RNA_per_ml, color = 'maroon', label = 'Average RNA abundance', alpha = 0.4, s = 5)
+	ln2 = ax2.plot(df_sewage.index, df_sewage.RNA_per_ml_smooth, color = 'maroon', label = 'Average RNA abundance smoothed')
 
 	ax1.xaxis.set_tick_params(rotation = 45)
 
@@ -876,7 +877,7 @@ def estimate_recent_prevalence():
 def main():
 	# government_response_results_simple()
 
-	estimate_recent_R()
+	# estimate_recent_R()
 
 	# estimate_recent_prevalence()
 
@@ -884,7 +885,7 @@ def main():
 
 	# plot_mobility()
 
-	# plot_sewage()
+	plot_sewage()
 
 	'''
 	df_prevalence, df_R0 = load_prevalence_R0_data()
