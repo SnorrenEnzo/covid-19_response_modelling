@@ -307,7 +307,7 @@ def plot_mobility():
 
 	ax.set_title('Mobility change in the Netherlands based on Google data')
 
-	ax.legend(loc = 'best')
+	ax.legend(loc = 'lower center', ncol = 3, prop = {'size': 9})
 	ax.xaxis.set_tick_params(rotation = 45)
 
 	plt.savefig(f'{plotloc}Mobility_change.png', dpi = 200, bbox_inches = 'tight')
@@ -580,6 +580,8 @@ def plot_daily_results():
 	mask = (df_daily_covid.index > '2020-08-01')
 	df_daily_covid = df_daily_covid.loc[mask]
 
+	print(df_daily_covid)
+
 	fig, ax = plt.subplots()
 
 	ax.plot(df_daily_covid.index, df_daily_covid['Total_reported'])
@@ -725,7 +727,9 @@ def main():
 
 	# estimate_recent_prevalence()
 
-	plot_prevalence_R()
+	# plot_prevalence_R()
+
+	plot_mobility()
 
 	'''
 	df_prevalence, df_R0 = load_prevalence_R0_data()
