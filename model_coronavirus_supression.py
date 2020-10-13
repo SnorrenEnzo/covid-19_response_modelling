@@ -169,7 +169,7 @@ def load_daily_covid():
 	url_daily_covid = 'https://data.rivm.nl/covid-19/COVID-19_aantallen_gemeente_per_dag.csv'
 	fname_daily_covid = f'{dataloc}positieve_tests.csv'
 
-	newdownloaded = downloadSave(url_daily_covid, fname_daily_covid, check_file_exists = True)
+	downloadSave(url_daily_covid, fname_daily_covid, check_file_exists = True)
 
 	#load only a few columns
 	df_daily_covid = pd.read_csv(fname_daily_covid, usecols = ['Date_of_publication', 'Total_reported', 'Hospital_admission', 'Deceased'], sep = ';')
@@ -184,6 +184,35 @@ def load_daily_covid():
 	df_daily_covid = df_daily_covid.groupby(['Date']).sum()
 
 	return df_daily_covid
+
+def load_sewage_data():
+
+	sewage_url = 'https://data.rivm.nl/covid-19/COVID-19_rioolwaterdata.csv'
+	sewage_fname = f'{dataloc}COVID-19_rioolwaterdata.csv'
+
+	downloadSave(sewage_url, sewage_fname, check_file_exists = True)
+
+	df_sewage = pd.read_csv(sewage_fname, usecols = ['Date_measurement', 'Security_region_name', 'Percentage_in_security_region', 'RNA_per_ml', 'Representative_measurement'])
+
+	#only take "representative measurements" which span 24 hours instead of a single moment
+	df_sewage = df_sewage.loc[df_sewage['Representative_measurement']]
+	del df_sewage['Representative_measurement']
+
+	#rename columns
+	df_sewage = df_sewage.rename(columns = {'Date_measurement': 'Date'})
+
+	#convert to date
+	df_sewage['Date'] = pd.to_datetime(df_sewage['Date'], format = '%Y-%m-%d %H:%M:%S')
+
+	df_sewage.set_index('Date', inplace = True)
+
+	#add column indicating number of measurements
+	df_sewage['n_measurements'] = np.ones(len(df_sewage), dtype = int)
+
+	#aggregate over the dates
+	df_sewage = df_sewage.groupby(['Date']).agg({'RNA_per_ml': 'mean', 'n_measurements': 'sum'})
+
+	return df_sewage
 
 def average_kernel(size = 7):
 	return np.ones(size)/size
@@ -245,6 +274,7 @@ def fit_model(model, xdata, ydata, p0 = None, sigma = None):
 	r_squared = 1 - (ss_res / ss_tot)
 
 	return popt, perr, r_squared
+
 
 def plot_prevalence_R():
 	df_prevalence, df_R0 = load_prevalence_R0_data()
@@ -317,6 +347,38 @@ def plot_mobility():
 	ax.xaxis.set_tick_params(rotation = 45)
 
 	plt.savefig(f'{plotloc}Mobility_change.png', dpi = 200, bbox_inches = 'tight')
+	plt.close()
+
+def plot_sewage():
+	"""
+	Plot measurements of SARS-CoV-2 RNA per ml measurements in sewage
+	"""
+	df_sewage = load_sewage_data()
+
+	print(df_sewage.tail())
+
+	fig, ax1 = plt.subplots()
+	ax2 = ax1.twinx()
+
+	ln1 = ax1.plot(df_sewage.index, df_sewage.n_measurements, color = 'navy', label = 'Number of measurements')
+
+	ln2 = ax2.plot(df_sewage.index, df_sewage.RNA_per_ml, color = 'maroon', label = 'Average RNA abundance')
+
+	ax1.xaxis.set_tick_params(rotation = 45)
+
+	lns = ln1 + ln2
+	labs = [l.get_label() for l in lns]
+	ax2.legend(lns, labs, loc = 'best')
+
+	ax1.set_ylabel('Number of measurements')
+	ax2.set_ylabel('Number of RNA fragments per mL')
+
+	ax1.grid(linestyle = ':', axis = 'x')
+	ax2.grid(linestyle = ':', axis = 'y')
+
+	ax1.set_title('SARS-CoV-2 RNA abundance in Dutch sewage discharge')
+
+	plt.savefig(f'{plotloc}Sewage_measurements.png', dpi = 200, bbox_inches = 'tight')
 	plt.close()
 
 def government_response_results_simple():
@@ -600,8 +662,8 @@ def mobility_R_correlation():
 		# clf = Ridge(alpha = 1.)
 		#apply adaboost regression, see here for more info:
 		#https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.AdaBoostRegressor.html#sklearn.ensemble.AdaBoostRegressor
-		# clf = AdaBoostRegressor()
-		clf = RandomForestRegressor()
+		clf = AdaBoostRegressor()
+		# clf = RandomForestRegressor()
 		clf.fit(X, Y, sample_weight = weight)
 		# clf.fit(X, Y)
 
@@ -804,7 +866,9 @@ def estimate_recent_prevalence():
 def main():
 	# government_response_results_simple()
 
-	mobility_R_correlation()
+	# mobility_R_correlation()
+
+	plot_sewage()
 
 	# estimate_recent_prevalence()
 
