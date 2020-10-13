@@ -773,6 +773,7 @@ def estimate_recent_prevalence():
 	"""
 	df_daily_covid = load_daily_covid()
 	df_prevalence, df_R0 = load_prevalence_R0_data()
+	df_sewage = load_sewage_data(smooth = True, shiftdates = False)
 
 	df_daily_covid['Total_per_million'] = df_daily_covid['Total_reported'] * per_million_factor
 
@@ -793,7 +794,7 @@ def estimate_recent_prevalence():
 	#select second wave of infections with the high test rate, but stop at the
 	#section where the prevalence flattens (seems unrealistic)
 	startdate = '2020-08-01'
-	enddate = '2020-09-18'
+	enddate = '2020-09-30'
 	df_daily_covid_sel = df_daily_covid.loc[(df_daily_covid.index > startdate) & (df_daily_covid.index < enddate)]
 	df_prevalence_sel = df_prevalence.loc[(df_prevalence.index > startdate) & (df_prevalence.index < enddate)]
 
@@ -884,9 +885,9 @@ def estimate_recent_prevalence():
 def main():
 	# government_response_results_simple()
 
-	estimate_recent_R()
+	# estimate_recent_R()
 
-	# estimate_recent_prevalence()
+	estimate_recent_prevalence()
 
 	# plot_prevalence_R()
 
