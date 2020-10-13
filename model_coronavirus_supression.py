@@ -115,7 +115,7 @@ def load_government_response_data():
 
 	return df_response
 
-def load_mobility_data():
+def load_mobility_data(smooth = False):
 	"""
 	Load Apple and Google mobility data. Downloadable from:
 
@@ -162,6 +162,11 @@ def load_mobility_data():
 	df_google_mob['date'] = pd.to_datetime(df_google_mob['date'], format = '%Y-%m-%d')
 	df_google_mob.set_index('date', inplace = True)
 
+	#smooth data if desired
+	if smooth:
+		windowsize = 3
+		for col in df_google_mob.columns:
+			df_google_mob[col + '_smooth'] = df_google_mob[col].rolling(windowsize).mean()
 
 	return df_google_mob
 
@@ -185,8 +190,7 @@ def load_daily_covid():
 
 	return df_daily_covid
 
-def load_sewage_data(smooth = False):
-
+def load_sewage_data(smooth = False, windowsize = 3, shiftdates = False):
 	sewage_url = 'https://data.rivm.nl/covid-19/COVID-19_rioolwaterdata.csv'
 	sewage_fname = f'{dataloc}COVID-19_rioolwaterdata.csv'
 
@@ -210,11 +214,16 @@ def load_sewage_data(smooth = False):
 	df_sewage['n_measurements'] = np.ones(len(df_sewage), dtype = int)
 
 	#aggregate over the dates
-	df_sewage = df_sewage.groupby(['Date']).agg({'RNA_per_ml': 'mean', 'n_measurements': 'sum'})
+	df_sewage = df_sewage.groupby(['Date']).agg({'RNA_per_ml': 'median', 'n_measurements': 'sum'})
+
+	if shiftdates:
+		#rough average peak of virus shedding
+		peak_shedding_period = 4
+		#shift dates to correct for delay between infection and peak virus emission
+		df_sewage.index = df_sewage.index - pd.Timedelta(f'{peak_shedding_period} day')
 
 	#smooth data if desired
 	if smooth:
-		windowsize = 3
 		df_sewage['RNA_per_ml_smooth'] = df_sewage['RNA_per_ml'].rolling(windowsize).mean()
 
 	return df_sewage
@@ -359,7 +368,7 @@ def plot_sewage():
 	"""
 	Plot measurements of SARS-CoV-2 RNA per ml measurements in sewage
 	"""
-	df_sewage = load_sewage_data(smooth = True)
+	df_sewage = load_sewage_data(smooth = True, shiftdates = True)
 
 	print(df_sewage.tail())
 
@@ -614,8 +623,8 @@ def stringency_R_correlation():
 
 def estimate_recent_R():
 	df_prevalence, df_R = load_prevalence_R0_data()
-	df_google_mob = load_mobility_data()
-	df_sewage = load_sewage_data(smooth = True)
+	df_google_mob = load_mobility_data(smooth = True)
+	df_sewage = load_sewage_data(smooth = True, shiftdates = True)
 
 
 	#determine error of R
@@ -623,35 +632,32 @@ def estimate_recent_R():
 
 	#merge datasets
 	df_mob_R = df_google_mob.merge(df_R[['Rt_avg', 'Rt_abs_error']], right_index = True, left_index = True)
+	df_mob_R = df_mob_R.merge(df_sewage[['RNA_per_ml_smooth']], right_index = True, left_index = True)
+
+	print(df_mob_R.head())
 
 	#select date range
 	mask = (df_mob_R.index > '2020-04-01') & (df_mob_R.index <= '2020-09-18')
 	df_mob_R = df_mob_R.loc[mask]
 
-
-	### plot results
-	fig, axs = plt.subplots(ncols = 3, nrows = 2, sharex = 'col', sharey = 'row', figsize = (12, 8), gridspec_kw = {'hspace': 0.1, 'wspace': 0})
-	axs = axs.flatten()
-
 	key_names = {
-	'retail_recreation': 'Retail & recreation',
-	'grocery_pharmacy': 'Grocery & pharmacy',
-	'parks': 'Parks',
-	'transit_stations': 'Transit stations',
-	'workplaces': 'Workplaces',
-	'residential': 'Residential'
+	'retail_recreation_smooth': 'Retail & recreation',
+	'parks_smooth': 'Parks',
+	'transit_stations_smooth': 'Transit stations',
+	'workplaces_smooth': 'Workplaces',
+	'residential_smooth': 'Residential',
+	'RNA_per_ml_smooth': 'RNA per ml'
 	}
 
 	### plot correlation between the different mobility metrics and R
 	if False:
-		for i, k in enumerate(key_names.keys()):
-			#smooth the data
-			df_mob_R[k + '_smooth'] = np.convolve(df_mob_R[k], average_kernel(size = 7), mode = 'same')
+		### plot results
+		fig, axs = plt.subplots(ncols = 3, nrows = 2, sharex = False, sharey = 'row', figsize = (12, 8), gridspec_kw = {'hspace': 0.18, 'wspace': 0})
+		axs = axs.flatten()
 
-			key = k + '_smooth'
-
+		for i, key in enumerate(key_names.keys()):
 			#plot data
-			axs[i].scatter(df_mob_R[key], df_mob_R['Rt_avg'], color = 'maroon', alpha = 0.6, s = 8, label = key_names[k])
+			axs[i].scatter(df_mob_R[key], df_mob_R['Rt_avg'], color = 'maroon', alpha = 0.6, s = 8, label = key_names[key])
 
 			### fit a linear model
 			popt, perr, r_squared = fit_model(linear_model,
@@ -663,7 +669,7 @@ def estimate_recent_R():
 			xpoints = np.linspace(np.min(df_mob_R[key]), np.max(df_mob_R[key]), num = 500)
 			axs[i].plot(xpoints, linear_model(xpoints, *popt), label = r'Fit ($R^2 = $' + f'{r_squared:0.03f})', color = 'black')
 
-			axs[i].set_title(f'{key_names[k]}')
+			axs[i].set_title(f'{key_names[key]}')
 
 			# axs[i].set_xlabel('Mobility change relative to baseline [%]')
 			# axs[i].set_ylabel(r'$R$')
@@ -691,14 +697,15 @@ def estimate_recent_R():
 			df_mob_R[k + '_smooth'] = np.convolve(df_mob_R[k], average_kernel(size = 7), mode = 'same')
 
 		best_correlating_metrics = [
-			'retail_recreation',
-			'transit_stations',
-			'residential'
+			'retail_recreation_smooth',
+			'transit_stations_smooth',
+			'residential_smooth',
+			'workplaces_smooth'
 		]
 		#get the multiple parameters into a single array
 		X = np.zeros((len(df_mob_R), len(best_correlating_metrics)))
 		for i in range(len(best_correlating_metrics)):
-			X[:,i] = np.array(df_mob_R[best_correlating_metrics[i] + '_smooth'])
+			X[:,i] = np.array(df_mob_R[best_correlating_metrics[i]])
 
 		Y = np.array(df_mob_R['Rt_avg'])
 
@@ -877,7 +884,7 @@ def estimate_recent_prevalence():
 def main():
 	# government_response_results_simple()
 
-	# estimate_recent_R()
+	estimate_recent_R()
 
 	# estimate_recent_prevalence()
 
@@ -885,7 +892,7 @@ def main():
 
 	# plot_mobility()
 
-	plot_sewage()
+	# plot_sewage()
 
 	'''
 	df_prevalence, df_R0 = load_prevalence_R0_data()
