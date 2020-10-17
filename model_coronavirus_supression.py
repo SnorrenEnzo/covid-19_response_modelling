@@ -454,20 +454,34 @@ def plot_daily_results():
 	"""
 	Plot up to date test results
 	"""
-	df_daily_covid = load_daily_covid(correct_for_delay = True)
+	df_daily_covid = load_daily_covid(correct_for_delay = False)
 	df_n_tests = load_number_of_tests()
+
+	### correct for the delay between the onset of symptoms and the result of the test
+	#for source of incubation period, see the readme
+	incubation_period = 6 #days, left of average of 8.3 due to extremely skewed distribution
+	#test delay determined from anecdotal evidence
+	time_to_test_delay = 2 #days
+	result_delay = 1
+
+	#correct the results to the day of the test
+	df_daily_covid.index = df_daily_covid.index - pd.Timedelta(f'{result_delay} day')
 
 	#merge datasets
 	df_daily_covid = df_daily_covid.merge(df_n_tests[['Number_of_tests']], right_index = True, left_index = True)
 
 	#determine test positivity rate
-	df_daily_covid['Positivity_rate'] = df_daily_covid['Total_reported']/df_daily_covid['Number_of_tests']
+	df_daily_covid['Positivity_ratio'] = df_daily_covid['Total_reported']/df_daily_covid['Number_of_tests']
+
+	#correct the results to the day of infection
+	df_daily_covid.index = df_daily_covid.index - pd.Timedelta(f'{int(incubation_period + time_to_test_delay)} day')
+
 
 	#select second wave of infections
 	startdate = '2020-07-01'
 	df_daily_covid = df_daily_covid.loc[df_daily_covid.index > startdate]
 
-	print(df_daily_covid.tail())
+	print(df_daily_covid['Positivity_ratio'])
 
 	fig, ax1 = plt.subplots()
 
@@ -476,7 +490,7 @@ def plot_daily_results():
 	#plot number of positive tests
 	lns1 = ax1.plot(df_daily_covid.index, df_daily_covid['Total_reported'], label = 'Number of positive tests')
 	#plot test positivity rate
-	lns2 = ax2.plot(df_daily_covid.index, df_daily_covid['Positivity_rate']*100, label = 'Positivity rate', color = 'maroon')
+	lns2 = ax2.plot(df_daily_covid.index, df_daily_covid['Positivity_ratio']*100, label = 'Positivity rate', color = 'maroon')
 
 	ax1.grid(linestyle = ':')
 
@@ -842,10 +856,29 @@ def estimate_recent_prevalence():
 	"""
 	Estimate the recent prevalence based on the test positivity ratio
 	"""
-	df_daily_covid = load_daily_covid(correct_for_delay = True)
+	df_daily_covid = load_daily_covid(correct_for_delay = False)
 	df_n_tests = load_number_of_tests()
 	df_prevalence, df_R0 = load_prevalence_R0_data()
 	df_sewage = load_sewage_data(smooth = True, shiftdates = False)
+
+	### correct for the delay between the onset of symptoms and the result of the test
+	#for source of incubation period, see the readme
+	incubation_period = 6 #days, left of average of 8.3 due to extremely skewed distribution
+	#test delay determined from anecdotal evidence
+	time_to_test_delay = 2 #days
+	result_delay = 1
+
+	#correct the results to the day of the test
+	df_daily_covid.index = df_daily_covid.index - pd.Timedelta(f'{result_delay} day')
+
+	#merge datasets
+	df_daily_covid = df_daily_covid.merge(df_n_tests[['Number_of_tests']], right_index = True, left_index = True)
+
+	#determine test positivity rate
+	df_daily_covid['Positivity_ratio'] = df_daily_covid['Total_reported']/df_daily_covid['Number_of_tests']
+
+	#correct the results to the day of infection
+	df_daily_covid.index = df_daily_covid.index - pd.Timedelta(f'{int(incubation_period + time_to_test_delay)} day')
 
 	#determine error on prevalence
 	df_prevalence['prev_abs_error'] = ((df_prevalence['prev_low'] - df_prevalence['prev_avg']).abs() + (df_prevalence['prev_up'] - df_prevalence['prev_avg']).abs())/2
@@ -854,10 +887,10 @@ def estimate_recent_prevalence():
 
 	#merge testing and sewage data
 	df_predictors = df_daily_covid.merge(df_sewage[['RNA_per_ml_smooth']], right_index = True, left_index = True)
-	df_predictors = df_predictors.merge(df_n_tests[['Number_of_tests']], right_index = True, left_index = True)
+	# df_predictors = df_predictors.merge(df_n_tests[['Number_of_tests']], right_index = True, left_index = True)
 
 	#determine test positivity ratio
-	df_predictors['Test_pos_ratio'] = df_predictors['Total_reported']/df_predictors['Number_of_tests']
+	# df_predictors['Test_pos_ratio'] = df_predictors['Total_reported']/df_predictors['Number_of_tests']
 
 	#select second wave of infections with the high test rate, but stop at the
 	#section where the prevalence flattens (seems unrealistic)
@@ -877,7 +910,7 @@ def estimate_recent_prevalence():
 	df_prevalence_cor = df_prevalence_sel.loc[df_prevalence_sel.index > startdate_for_cor]
 
 	parameters_used = [
-	'Test_pos_ratio',
+	'Positivity_ratio',
 	'RNA_per_ml_smooth'
 	]
 
@@ -988,13 +1021,13 @@ def main():
 
 	# estimate_recent_R()
 
-	# estimate_recent_prevalence()
+	estimate_recent_prevalence()
 
 	# plot_prevalence_R()
 
 	# plot_mobility()
 
-	plot_daily_results()
+	# plot_daily_results()
 
 	# plot_sewage()
 
