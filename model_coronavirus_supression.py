@@ -10,7 +10,7 @@ import urllib.request
 import shutil
 import os, sys
 
-from sklearn.linear_model import Ridge
+from sklearn.linear_model import Ridge, LinearRegression, Lasso
 from sklearn.ensemble import AdaBoostRegressor, RandomForestRegressor
 
 dataloc = './Data/'
@@ -220,7 +220,6 @@ def load_number_of_tests():
 	df_n_tests = df_n_tests.interpolate(method = 'linear')
 
 	return df_n_tests
-
 
 def load_sewage_data(smooth = False, windowsize = 3, shiftdates = False):
 	sewage_url = 'https://data.rivm.nl/covid-19/COVID-19_rioolwaterdata.csv'
@@ -824,6 +823,7 @@ def estimate_recent_prevalence():
 	Estimate the recent prevalence based on the test positivity ratio
 	"""
 	df_daily_covid = load_daily_covid()
+	df_n_tests = load_number_of_tests()
 	df_prevalence, df_R0 = load_prevalence_R0_data()
 	df_sewage = load_sewage_data(smooth = True, shiftdates = False)
 
@@ -834,7 +834,7 @@ def estimate_recent_prevalence():
 
 	### correct for the delay between the onset of symptoms and the result of the test
 	#for source of incubation period, see the readme
-	incubation_period = 8.3 #days
+	incubation_period = 6 #days
 	#test delay determined from anecdotal evidence
 	test_delay = 3 #days
 
@@ -848,6 +848,10 @@ def estimate_recent_prevalence():
 
 	#merge testing and sewage data
 	df_predictors = df_daily_covid.merge(df_sewage[['RNA_per_ml_smooth']], right_index = True, left_index = True)
+	df_predictors = df_predictors.merge(df_n_tests[['Number_of_tests']], right_index = True, left_index = True)
+
+	#determine test positivity ratio
+	df_predictors['Test_pos_ratio'] = df_predictors['Total_reported']/df_predictors['Number_of_tests']
 
 	#select second wave of infections with the high test rate, but stop at the
 	#section where the prevalence flattens (seems unrealistic)
@@ -855,6 +859,7 @@ def estimate_recent_prevalence():
 	enddate = '2020-09-30'
 	df_predictors_sel = df_predictors.loc[(df_predictors.index > startdate) & (df_predictors.index < enddate)]
 	df_prevalence_sel = df_prevalence.loc[(df_prevalence.index > startdate) & (df_prevalence.index < enddate)]
+
 
 	#discard days with too low number of positive tests per million for determining the correlation
 	test_pos_threshold = 40
@@ -865,17 +870,22 @@ def estimate_recent_prevalence():
 	df_predictors_cor = df_predictors_sel.loc[df_predictors_sel.index > startdate_for_cor]
 	df_prevalence_cor = df_prevalence_sel.loc[df_prevalence_sel.index > startdate_for_cor]
 
-	'''
-	### determine correlation under the assumption that the testing environment
-	### so the number of tests, peoples readyness to test etc do not change
-	popt, perr, r_squared = fit_model(linear_model,
-						df_daily_covid_cor['Total_per_million'],
-						df_prevalence_cor['prev_avg'])
-	'''
 	parameters_used = [
-	'Total_per_million',
+	'Test_pos_ratio',
 	'RNA_per_ml_smooth'
 	]
+
+	'''
+	fig, ax1 = plt.subplots()
+
+	ax2 = ax1.twinx()
+
+	ax1.plot(df_predictors_cor.index, df_predictors_cor['Test_pos_ratio'], color = 'maroon')
+	ax2.plot(df_prevalence_cor.index, df_prevalence_cor['prev_avg'])
+
+	plt.savefig('test.png')
+	plt.close()
+	'''
 
 	### get data into the shape required for sklearn functions
 	X = dataframes_to_NDarray(df_predictors_cor, parameters_used)
@@ -884,7 +894,9 @@ def estimate_recent_prevalence():
 	weight = 1/np.array(df_prevalence_cor['prev_abs_error'])
 
 	### apply regression
-	clf = Ridge(alpha = 1.)
+	# clf = Ridge(alpha = 1.)
+	clf = LinearRegression()
+	# clf = AdaBoostRegressor()
 	clf.fit(X, Y, sample_weight = weight)
 
 	r_squared = clf.score(X, Y, sample_weight = weight)
@@ -922,6 +934,7 @@ def estimate_recent_prevalence():
 	# df_predictors_pred['Prev_pred'] = linear_model(df_daily_covid_pred['Total_per_million'], *popt)
 	df_predictors_pred['Prev_pred'] = clf.predict(Xpred)
 
+	print(df_predictors_pred.tail())
 
 	#append the last data point from the real data
 	df_prevalence_pred = df_predictors_pred[['Prev_pred']]
@@ -938,7 +951,7 @@ def estimate_recent_prevalence():
 	ax.fill_between(df_prevalence_sel.index, df_prevalence_sel['prev_low'], df_prevalence_sel['prev_up'], alpha = 0.4, color = 'royalblue')
 
 	#predictions
-	ax.plot(df_prevalence_pred.index, df_prevalence_pred['Prev_pred'], label = f'Prediction ($R^2 = {r_squared:0.03f}$)', color = 'maroon')
+	ax.plot(df_prevalence_pred.index, df_prevalence_pred['Prev_pred'], label = f'Linear prediction ($R^2 = {r_squared:0.03f}$)', color = 'maroon')
 
 	ax.grid(linestyle = ':')
 
@@ -969,13 +982,13 @@ def main():
 
 	# estimate_recent_R()
 
-	# estimate_recent_prevalence()
+	estimate_recent_prevalence()
 
 	# plot_prevalence_R()
 
 	# plot_mobility()
 
-	plot_daily_results()
+	# plot_daily_results()
 
 	# plot_sewage()
 
