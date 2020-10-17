@@ -170,7 +170,7 @@ def load_mobility_data(smooth = False):
 
 	return df_google_mob
 
-def load_daily_covid():
+def load_daily_covid(correct_for_delay = False):
 	url_daily_covid = 'https://data.rivm.nl/covid-19/COVID-19_aantallen_gemeente_per_dag.csv'
 	fname_daily_covid = f'{dataloc}positieve_tests.csv'
 
@@ -187,6 +187,21 @@ def load_daily_covid():
 
 	#aggregate over the dates
 	df_daily_covid = df_daily_covid.groupby(['Date']).sum()
+
+	if correct_for_delay:
+		### correct for the delay between the onset of symptoms and the result of the test
+		#for source of incubation period, see the readme
+		incubation_period = 6 #days, left of average of 8.3 due to extremely skewed distribution
+		#test delay determined from anecdotal evidence
+		test_delay = 3 #days
+
+		#convert to int for easier data analysis (otherwise we need to interpolate to hours etc)
+		total_delay = int(incubation_period + test_delay)
+
+		# df_daily_covid['total_delay'] = np.repeat(total_delay, len(df_daily_covid))
+
+		#apply the correction to the testing data
+		df_daily_covid.index = df_daily_covid.index - pd.Timedelta(f'{total_delay} day')
 
 	return df_daily_covid
 
@@ -439,7 +454,7 @@ def plot_daily_results():
 	"""
 	Plot up to date test results
 	"""
-	df_daily_covid = load_daily_covid()
+	df_daily_covid = load_daily_covid(correct_for_delay = True)
 	df_n_tests = load_number_of_tests()
 
 	#merge datasets
@@ -469,7 +484,7 @@ def plot_daily_results():
 	labs = [l.get_label() for l in lns]
 	ax1.legend(lns, labs, loc='best')
 
-	ax1.set_xlabel('Reporting date')
+	ax1.set_xlabel('Estimated infection date\n(reporting date - incubation period (~6 days) - test delays (~3 days))')
 	ax1.set_ylabel('Number of positive tests per day')
 	ax2.set_ylabel('Positivity rate [%]')
 
@@ -827,7 +842,7 @@ def estimate_recent_prevalence():
 	"""
 	Estimate the recent prevalence based on the test positivity ratio
 	"""
-	df_daily_covid = load_daily_covid()
+	df_daily_covid = load_daily_covid(correct_for_delay = True)
 	df_n_tests = load_number_of_tests()
 	df_prevalence, df_R0 = load_prevalence_R0_data()
 	df_sewage = load_sewage_data(smooth = True, shiftdates = False)
@@ -836,20 +851,6 @@ def estimate_recent_prevalence():
 	df_prevalence['prev_abs_error'] = ((df_prevalence['prev_low'] - df_prevalence['prev_avg']).abs() + (df_prevalence['prev_up'] - df_prevalence['prev_avg']).abs())/2
 
 	df_daily_covid['Total_per_million'] = df_daily_covid['Total_reported'] * per_million_factor
-
-	### correct for the delay between the onset of symptoms and the result of the test
-	#for source of incubation period, see the readme
-	incubation_period = 6 #days
-	#test delay determined from anecdotal evidence
-	test_delay = 3 #days
-
-	#convert to int for easier data analysis (otherwise we need to interpolate to hours etc)
-	total_delay = int(incubation_period + test_delay)
-
-	df_daily_covid['test_delay'] = np.repeat(test_delay, len(df_daily_covid))
-
-	#apply the correction to the testing data
-	df_daily_covid.index = df_daily_covid.index - pd.Timedelta(f'{total_delay} day')
 
 	#merge testing and sewage data
 	df_predictors = df_daily_covid.merge(df_sewage[['RNA_per_ml_smooth']], right_index = True, left_index = True)
