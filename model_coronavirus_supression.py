@@ -442,12 +442,17 @@ def plot_daily_results():
 	df_daily_covid = load_daily_covid()
 	df_n_tests = load_number_of_tests()
 
+	#merge datasets
+	df_daily_covid = df_daily_covid.merge(df_n_tests[['Number_of_tests']], right_index = True, left_index = True)
+
+	#determine test positivity rate
+	df_daily_covid['Positivity_rate'] = df_daily_covid['Total_reported']/df_daily_covid['Number_of_tests']
+
 	#select second wave of infections
 	startdate = '2020-07-01'
 	df_daily_covid = df_daily_covid.loc[df_daily_covid.index > startdate]
-	df_n_tests = df_n_tests.loc[df_n_tests.index > startdate]
 
-	print(df_n_tests.tail())
+	print(df_daily_covid.tail())
 
 	fig, ax1 = plt.subplots()
 
@@ -455,8 +460,8 @@ def plot_daily_results():
 
 	#plot number of positive tests
 	lns1 = ax1.plot(df_daily_covid.index, df_daily_covid['Total_reported'], label = 'Number of positive tests')
-	#plot number of tests
-	lns2 = ax2.plot(df_n_tests.index, df_n_tests['Number_of_tests'], label = 'Number of tests', color = 'maroon')
+	#plot test positivity rate
+	lns2 = ax2.plot(df_daily_covid.index, df_daily_covid['Positivity_rate']*100, label = 'Positivity rate', color = 'maroon')
 
 	ax1.grid(linestyle = ':')
 
@@ -466,7 +471,7 @@ def plot_daily_results():
 
 	ax1.set_xlabel('Reporting date')
 	ax1.set_ylabel('Number of positive tests per day')
-	ax2.set_ylabel('Number of tests per day')
+	ax2.set_ylabel('Positivity rate [%]')
 
 	ax1.set_title('SARS-CoV-2 tests in the Netherlands')
 
@@ -982,13 +987,13 @@ def main():
 
 	# estimate_recent_R()
 
-	estimate_recent_prevalence()
+	# estimate_recent_prevalence()
 
 	# plot_prevalence_R()
 
 	# plot_mobility()
 
-	# plot_daily_results()
+	plot_daily_results()
 
 	# plot_sewage()
 
