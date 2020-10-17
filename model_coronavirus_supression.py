@@ -190,6 +190,38 @@ def load_daily_covid():
 
 	return df_daily_covid
 
+def load_number_of_tests():
+	"""
+	Data source:
+	https://www.rivm.nl/documenten/wekelijkse-update-epidemiologische-situatie-covid-19-in-nederland
+
+	Compiled into a .csv by hand
+	"""
+
+	df_n_tests = pd.read_csv(f'{dataloc}tests_per_week.csv', usecols = ['Week_number', 'Number_of_tests'])
+
+	df_n_tests = df_n_tests.astype({'Week_number': str})
+
+	#get date from week number, assume the central day of the week (thursday)
+	df_n_tests['Date'] = pd.to_datetime(df_n_tests['Week_number'] + '-4-2020', format = '%W-%w-%Y')
+
+	df_n_tests.set_index('Date', inplace = True)
+
+	del df_n_tests['Week_number']
+
+	### interpolate to each day
+	#first convert units to per day
+	df_n_tests['Number_of_tests'] /= 7
+
+	#resample to once a day
+	df_n_tests = df_n_tests.resample('1d').mean()
+
+	#then interpolate
+	df_n_tests = df_n_tests.interpolate(method = 'linear')
+
+	return df_n_tests
+
+
 def load_sewage_data(smooth = False, windowsize = 3, shiftdates = False):
 	sewage_url = 'https://data.rivm.nl/covid-19/COVID-19_rioolwaterdata.csv'
 	sewage_fname = f'{dataloc}COVID-19_rioolwaterdata.csv'
@@ -409,33 +441,46 @@ def plot_daily_results():
 	Plot up to date test results
 	"""
 	df_daily_covid = load_daily_covid()
+	df_n_tests = load_number_of_tests()
 
 	#select second wave of infections
-	mask = (df_daily_covid.index > '2020-08-01')
-	df_daily_covid = df_daily_covid.loc[mask]
+	startdate = '2020-07-01'
+	df_daily_covid = df_daily_covid.loc[df_daily_covid.index > startdate]
+	df_n_tests = df_n_tests.loc[df_n_tests.index > startdate]
 
-	print(df_daily_covid)
+	print(df_n_tests.tail())
 
-	fig, ax = plt.subplots()
+	fig, ax1 = plt.subplots()
 
-	ax.plot(df_daily_covid.index, df_daily_covid['Total_reported'])
+	ax2 = ax1.twinx()
 
-	ax.grid(linestyle = ':')
+	#plot number of positive tests
+	lns1 = ax1.plot(df_daily_covid.index, df_daily_covid['Total_reported'], label = 'Number of positive tests')
+	#plot number of tests
+	lns2 = ax2.plot(df_n_tests.index, df_n_tests['Number_of_tests'], label = 'Number of tests', color = 'maroon')
 
-	ax.set_xlabel('Meldingsdatum (niet datum van afname test)')
-	ax.set_ylabel('Aantal positieve tests')
+	ax1.grid(linestyle = ':')
 
-	ax.set_title('Aantal positieve SARS-CoV-2 tests in Nederland')
+	lns = lns1 + lns2
+	labs = [l.get_label() for l in lns]
+	ax1.legend(lns, labs, loc='best')
+
+	ax1.set_xlabel('Reporting date')
+	ax1.set_ylabel('Number of positive tests per day')
+	ax2.set_ylabel('Number of tests per day')
+
+	ax1.set_title('SARS-CoV-2 tests in the Netherlands')
 
 	# ax.xaxis.set_tick_params(rotation = 45)
-	ax.xaxis.set_major_locator(mdates.AutoDateLocator(minticks = 3, maxticks = 6))
+	ax1.xaxis.set_major_locator(mdates.AutoDateLocator(minticks = 3, maxticks = 6))
 	fig.autofmt_xdate()
 	myfmt = mdates.DateFormatter('%d-%m-%Y')
-	ax.xaxis.set_major_formatter(myfmt)
+	ax1.xaxis.set_major_formatter(myfmt)
 
-	ax.set_ylim(0)
+	ax1.set_ylim(0)
+	ax2.set_ylim(0)
 
-	plt.savefig(f'{plotloc}Positieve_tests_tweede_golf.png', dpi = 200, bbox_inches = 'tight')
+	plt.savefig(f'{plotloc}Tests_second_wave.png', dpi = 200, bbox_inches = 'tight')
 	plt.close()
 
 	# print(load_daily_covid)
@@ -924,11 +969,13 @@ def main():
 
 	# estimate_recent_R()
 
-	estimate_recent_prevalence()
+	# estimate_recent_prevalence()
 
 	# plot_prevalence_R()
 
 	# plot_mobility()
+
+	plot_daily_results()
 
 	# plot_sewage()
 
