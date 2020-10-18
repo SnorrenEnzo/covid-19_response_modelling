@@ -8,7 +8,7 @@ import matplotlib.dates as mdates
 
 import urllib.request
 import shutil
-import os, sys
+import os, sys, glob
 
 from sklearn.linear_model import Ridge, LinearRegression, Lasso
 from sklearn.ensemble import AdaBoostRegressor, RandomForestRegressor
@@ -168,7 +168,26 @@ def load_mobility_data(smooth = False):
 		for col in df_google_mob.columns:
 			df_google_mob[col + '_smooth'] = df_google_mob[col].rolling(windowsize).mean()
 
-	return df_google_mob
+
+	### now load the apple data
+	apple_part_fname = f'{dataloc}applemobilitytrends*.csv'
+	apple_mob_fname = glob.glob(apple_part_fname)[0]
+
+	df_apple_mob = pd.read_csv(apple_mob_fname)
+	#find the driving, walking & transit rows of the netherlands
+	df_apple_mob = df_apple_mob.loc[df_apple_mob['region'] == 'Netherlands']
+
+	#change index to the transportation type
+	df_apple_mob.set_index('transportation_type', inplace = True)
+
+	df_apple_mob = df_apple_mob.transpose()
+
+	#remove first rows
+	df_apple_mob = df_apple_mob.iloc[6:]
+
+	df_apple_mob.index = pd.to_datetime(df_apple_mob.index, format = '%Y-%m-%d')
+
+	return df_google_mob, df_apple_mob
 
 def load_daily_covid(correct_for_delay = False):
 	url_daily_covid = 'https://data.rivm.nl/covid-19/COVID-19_aantallen_gemeente_per_dag.csv'
@@ -258,6 +277,10 @@ def load_sewage_data(smooth = False, windowsize = 3, shiftdates = False):
 
 	#add column indicating number of measurements
 	df_sewage['n_measurements'] = np.ones(len(df_sewage), dtype = int)
+
+	df_temp = df_sewage.groupby(['Security_region_name']).agg({'RNA_per_ml': 'median', 'n_measurements': 'sum'})
+
+	print(df_temp)
 
 	#aggregate over the dates
 	df_sewage = df_sewage.groupby(['Date']).agg({'RNA_per_ml': 'median', 'n_measurements': 'sum'})
@@ -380,7 +403,11 @@ def plot_prevalence_R():
 	plt.savefig(f'{plotloc}coronadashboard_prevalence_R.png', dpi = 200, bbox_inches = 'tight')
 
 def plot_mobility():
-	df_google_mob = load_mobility_data()
+	df_google_mob, df_apple_mob = load_mobility_data()
+
+	print(df_apple_mob)
+
+	sys.exit()
 
 	#smooth the data
 	relevant_keys = [
@@ -1021,11 +1048,11 @@ def main():
 
 	# estimate_recent_R()
 
-	estimate_recent_prevalence()
+	# estimate_recent_prevalence()
 
 	# plot_prevalence_R()
 
-	# plot_mobility()
+	plot_mobility()
 
 	# plot_daily_results()
 
