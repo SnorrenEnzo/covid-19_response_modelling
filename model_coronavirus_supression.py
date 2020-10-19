@@ -764,21 +764,20 @@ def estimate_recent_R():
 	df_google_mob, df_apple_mob = load_mobility_data(smooth = True)
 	df_sewage = load_sewage_data(smooth = True, shiftdates = True)
 
-	print(df_google_mob.tail())
-	print(df_apple_mob.tail())
-
 	#determine error of R
 	df_R['Rt_abs_error'] = ((df_R['Rt_low'] - df_R['Rt_avg']).abs() + (df_R['Rt_up'] - df_R['Rt_avg']).abs())/2
 
 	#merge datasets
-	df_mob_R = df_google_mob.merge(df_R, right_index = True, left_index = True)
-	df_mob_R = df_mob_R.merge(df_apple_mob, right_index = True, left_index = True)
-	df_mob_R = df_mob_R.merge(df_sewage[['RNA_per_ml_smooth']], right_index = True, left_index = True)
+	# df_mob_R = df_google_mob.merge(df_R, right_index = True, left_index = True)
+	df_mob_R = df_google_mob.join(df_R, how = 'outer')
+	df_mob_R = df_mob_R.join(df_apple_mob, how = 'inner')
+	df_mob_R = df_mob_R.join(df_sewage[['RNA_per_ml_smooth']], how = 'outer')
 
 	#select date range
 	mask = (df_mob_R.index > '2020-04-01') & (df_mob_R.index <= '2020-09-18')
 	df_train = df_mob_R.loc[mask]
 	df_pred = df_mob_R.loc[df_mob_R.index > '2020-07-01']
+
 
 	key_names = {
 	'retail_recreation_smooth': 'Retail & recreation',
@@ -856,15 +855,16 @@ def estimate_recent_R():
 		#apply ridge regression, see here for more info:
 		#https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.Ridge.html#sklearn.linear_model.Ridge
 		# clf = Ridge(alpha = 1.)
+		# clf = Lasso()
 		#apply adaboost regression, see here for more info:
 		#https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.AdaBoostRegressor.html#sklearn.ensemble.AdaBoostRegressor
 		# clf = AdaBoostRegressor()
 		clf = RandomForestRegressor()
 		clf.fit(X_train, Y_train, sample_weight = weight_train)
-		# clf.fit(X, Y)
+		# clf.fit(X_train, Y_train)
 
 		r_squared = clf.score(X_train, Y_train, sample_weight = weight_train)
-		# r_squared = clf.score(X, Y)
+		# r_squared = clf.score(X_train, Y_train)
 
 		print(f'R^2: {r_squared:0.03f}')
 
@@ -1096,7 +1096,7 @@ def main():
 
 	# plot_prevalence_R()
 
-	plot_mobility()
+	# plot_mobility()
 
 	# plot_daily_results()
 

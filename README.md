@@ -1,7 +1,6 @@
 ## Modelling the outcome of Dutch government coronavirus response
 
 ### TODO:
-- Use more mobility data to co-predict R
 - Auto download Apple/Google data
 
 ### Data sources
