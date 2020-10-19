@@ -162,12 +162,6 @@ def load_mobility_data(smooth = False):
 	df_google_mob['date'] = pd.to_datetime(df_google_mob['date'], format = '%Y-%m-%d')
 	df_google_mob.set_index('date', inplace = True)
 
-	#smooth data if desired
-	if smooth:
-		windowsize = 3
-		for col in df_google_mob.columns:
-			df_google_mob[col + '_smooth'] = df_google_mob[col].rolling(windowsize).mean()
-
 
 	### now load the apple data
 	apple_part_fname = f'{dataloc}applemobilitytrends*.csv'
@@ -186,6 +180,19 @@ def load_mobility_data(smooth = False):
 	df_apple_mob = df_apple_mob.iloc[6:]
 
 	df_apple_mob.index = pd.to_datetime(df_apple_mob.index, format = '%Y-%m-%d')
+
+	#make the change from 0 instead of 100%
+	for col in df_apple_mob.columns:
+		df_apple_mob[col] -= 100
+
+	### smooth data if desired
+	if smooth:
+		windowsize = 3
+		for col in df_google_mob.columns:
+			df_google_mob[col + '_smooth'] = df_google_mob[col].rolling(windowsize).mean()
+
+		for col in df_apple_mob.columns:
+			df_apple_mob[col + '_smooth'] = df_apple_mob[col].rolling(windowsize).mean()
 
 	return df_google_mob, df_apple_mob
 
@@ -403,25 +410,19 @@ def plot_prevalence_R():
 	plt.savefig(f'{plotloc}coronadashboard_prevalence_R.png', dpi = 200, bbox_inches = 'tight')
 
 def plot_mobility():
-	df_google_mob, df_apple_mob = load_mobility_data()
-
-	print(df_apple_mob)
-
-	sys.exit()
+	df_google_mob, df_apple_mob = load_mobility_data(smooth = True)
 
 	#smooth the data
-	relevant_keys = [
-	'retail_recreation',
-	'grocery_pharmacy',
-	'parks',
-	'transit_stations',
-	'workplaces',
-	'residential'
-	]
+	# relevant_keys = [
+	# 'retail_recreation',
+	# 'grocery_pharmacy',
+	# 'parks',
+	# 'transit_stations',
+	# 'workplaces',
+	# 'residential'
+	# ]
 
-	for key in relevant_keys:
-		df_google_mob[key + '_smooth'] = np.convolve(df_google_mob[key], average_kernel(size = 7), mode = 'same')
-
+	### plot google data
 	fig, ax = plt.subplots()
 
 	ax.plot(df_google_mob.index, df_google_mob['retail_recreation_smooth'], label = 'Retail & recreation')
@@ -441,7 +442,28 @@ def plot_mobility():
 	ax.legend(loc = 'lower center', ncol = 3, prop = {'size': 9})
 	ax.xaxis.set_tick_params(rotation = 45)
 
-	plt.savefig(f'{plotloc}Mobility_change.png', dpi = 200, bbox_inches = 'tight')
+	plt.savefig(f'{plotloc}Mobility_change_Google.png', dpi = 200, bbox_inches = 'tight')
+	plt.close()
+
+
+	### plot Apple data
+	fig, ax = plt.subplots()
+
+	ax.plot(df_apple_mob.index, df_apple_mob['driving_smooth'], label = 'Driving')
+	ax.plot(df_apple_mob.index, df_apple_mob['transit_smooth'], label = 'Transit')
+	ax.plot(df_apple_mob.index, df_apple_mob['walking_smooth'], label = 'Walking')
+
+	# ax.set_ylim(-100, 100)
+	ax.grid(linestyle = ':')
+
+	ax.set_ylabel('Mobility change relative to baseline [%]')
+
+	ax.set_title('Mobility change in the Netherlands based on Apple data')
+
+	ax.legend(loc = 'lower center', ncol = 3, prop = {'size': 9})
+	ax.xaxis.set_tick_params(rotation = 45)
+
+	plt.savefig(f'{plotloc}Mobility_change_Apple.png', dpi = 200, bbox_inches = 'tight')
 	plt.close()
 
 def plot_sewage():
