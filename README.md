@@ -2,7 +2,7 @@
 
 ### TODO:
 - Use more mobility data to co-predict R
-- Correct the data of positive test results per day for the number of tests conducted.
+- Auto download Apple/Google data
 
 ### Data sources
 

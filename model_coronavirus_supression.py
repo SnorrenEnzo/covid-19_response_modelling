@@ -115,7 +115,7 @@ def load_government_response_data():
 
 	return df_response
 
-def load_mobility_data(smooth = False):
+def load_mobility_data(smooth = False, smoothsize = 7):
 	"""
 	Load Apple and Google mobility data. Downloadable from:
 
@@ -187,12 +187,11 @@ def load_mobility_data(smooth = False):
 
 	### smooth data if desired
 	if smooth:
-		windowsize = 3
 		for col in df_google_mob.columns:
-			df_google_mob[col + '_smooth'] = df_google_mob[col].rolling(windowsize).mean()
+			df_google_mob[col + '_smooth'] = df_google_mob[col].rolling(smoothsize).mean()
 
 		for col in df_apple_mob.columns:
-			df_apple_mob[col + '_smooth'] = df_apple_mob[col].rolling(windowsize).mean()
+			df_apple_mob[col + '_smooth'] = df_apple_mob[col].rolling(smoothsize).mean()
 
 	### interpolate the gap in the Apple data
 	#resample to once a day
@@ -765,12 +764,14 @@ def estimate_recent_R():
 	df_google_mob, df_apple_mob = load_mobility_data(smooth = True)
 	df_sewage = load_sewage_data(smooth = True, shiftdates = True)
 
+	print(df_google_mob.tail())
+	print(df_apple_mob.tail())
 
 	#determine error of R
 	df_R['Rt_abs_error'] = ((df_R['Rt_low'] - df_R['Rt_avg']).abs() + (df_R['Rt_up'] - df_R['Rt_avg']).abs())/2
 
 	#merge datasets
-	df_mob_R = df_google_mob.merge(df_R[['Rt_avg', 'Rt_abs_error']], right_index = True, left_index = True)
+	df_mob_R = df_google_mob.merge(df_R, right_index = True, left_index = True)
 	df_mob_R = df_mob_R.merge(df_apple_mob, right_index = True, left_index = True)
 	df_mob_R = df_mob_R.merge(df_sewage[['RNA_per_ml_smooth']], right_index = True, left_index = True)
 
@@ -844,10 +845,10 @@ def estimate_recent_R():
 			'transit_smooth'
 		]
 		#get the multiple parameters into a single array
-		X_train = np.zeros((len(df_train), len(best_correlating_metrics)))
-		for i in range(len(best_correlating_metrics)):
-			X_train[:,i] = np.array(df_train[best_correlating_metrics[i]])
-
+		# X_train = np.zeros((len(df_train), len(best_correlating_metrics)))
+		# for i in range(len(best_correlating_metrics)):
+		# 	X_train[:,i] = np.array(df_train[best_correlating_metrics[i]])
+		X_train = dataframes_to_NDarray(df_train, best_correlating_metrics)
 		Y_train = np.array(df_train['Rt_avg'])
 
 		weight_train = 1/np.array(df_train['Rt_abs_error'])
@@ -857,8 +858,8 @@ def estimate_recent_R():
 		# clf = Ridge(alpha = 1.)
 		#apply adaboost regression, see here for more info:
 		#https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.AdaBoostRegressor.html#sklearn.ensemble.AdaBoostRegressor
-		clf = AdaBoostRegressor()
-		# clf = RandomForestRegressor()
+		# clf = AdaBoostRegressor()
+		clf = RandomForestRegressor()
 		clf.fit(X_train, Y_train, sample_weight = weight_train)
 		# clf.fit(X, Y)
 
@@ -889,48 +890,38 @@ def estimate_recent_R():
 		plt.savefig(f'{plotloc}Mobility_R_prediction_accuracy.png', dpi = 200, bbox_inches = 'tight')
 		plt.close()
 
+
 		### now make and plot predictions
+		X_pred = dataframes_to_NDarray(df_pred, best_correlating_metrics)
 
-		#plot data
-		# axs[i].scatter(df_mob_R[key], df_mob_R['Rt_avg'], color = 'maroon', alpha = 0.6, s = 8, label = key_names[k])
+		Y_pred = clf.predict(X_pred)
 
 
-		### fit a linear model
-		'''
-		popt, perr, r_squared = fit_model(three_variables_linear_model,
-							xdata,
-							,
-							sigma = np.array(df_mob_R['Rt_abs_error']))
+		fig, ax = plt.subplots()
 
-		print(r_squared)
-		'''
+		ax.plot(df_pred.index, df_pred.Rt_avg, label = 'Ground truth', color = 'navy')
+		#indicate error margins on ground truth
+		ax.fill_between(df_pred.index, df_pred['Rt_low'], df_pred['Rt_up'], alpha = 0.4, color = 'navy')
 
-		'''
-		#plot the model
-		xpoints = np.linspace(np.min(df_mob_R[key]), np.max(df_mob_R[key]), num = 500)
-		axs[i].plot(xpoints, linear_model(xpoints, *popt), label = r'Fit ($R^2 = $' + f'{r_squared:0.03f})', color = 'black')
+		ax.plot(df_pred.index, Y_pred, label = f'Prediction ($R^2$: {r_squared:0.03f})', color = 'maroon')
 
-		axs[i].set_title(f'{key_names[k]}')
+		ax.grid(linestyle = ':')
+		ax.legend(loc = 'best')
 
-		# axs[i].set_xlabel('Mobility change relative to baseline [%]')
-		# axs[i].set_ylabel(r'$R$')
+		ax.set_ylabel('$R$')
+		ax.set_title('$R$ prediction')
 
-		axs[i].grid(linestyle = ':')
+		#fix date ticks
+		ax.set_xticks(pd.date_range(np.min(df_pred.index), np.max(df_pred.index + pd.Timedelta(f'7 day')), freq = '2W'))
+		fig.autofmt_xdate()
+		myfmt = mdates.DateFormatter('%d-%m-%Y')
+		ax.xaxis.set_major_formatter(myfmt)
 
-		if key == 'parks':
-			axs[i].set_xlim(right = 100)
-
-		axs[i].legend(loc = 'best')
-
-		#frame for overall x and y labels
-		fig.add_subplot(111, frameon = False)
-		plt.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
-		plt.xlabel('Mobility change from baseline [%]')
-		plt.ylabel('$R$')
-
-		plt.savefig(f'{plotloc}Mobility_R_correlation.png', dpi = 200, bbox_inches = 'tight')
+		plt.savefig(f'{plotloc}Mobility_R_prediction.png', dpi = 200, bbox_inches = 'tight')
 		plt.close()
-		'''
+
+
+
 
 def estimate_recent_prevalence():
 	"""
@@ -1105,7 +1096,7 @@ def main():
 
 	# plot_prevalence_R()
 
-	# plot_mobility()
+	plot_mobility()
 
 	# plot_daily_results()
 
@@ -1128,3 +1119,4 @@ def main():
 
 if __name__ == '__main__':
 	main()
+#
