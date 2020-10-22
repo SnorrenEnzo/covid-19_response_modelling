@@ -524,8 +524,6 @@ def plot_daily_results():
 
 	df_response = load_government_response_data()
 
-	print(df_response)
-
 	### correct for the delay between the onset of symptoms and the result of the test
 	#for source of incubation period, see the readme
 	incubation_period = 6 #days, left of average of 8.3 due to extremely skewed distribution
@@ -553,7 +551,7 @@ def plot_daily_results():
 	df_daily_covid = df_daily_covid.loc[df_daily_covid.index > startdate]
 	df_response = df_response.loc[df_response.index > startdate]
 
-	print(df_daily_covid['Positivity_ratio'])
+	print(df_daily_covid['Positivity_ratio'].tail())
 
 	fig, ax1 = plt.subplots()
 
@@ -567,10 +565,10 @@ def plot_daily_results():
 	lns1 = ax1.plot(df_daily_covid.index, df_daily_covid['Total_reported'], label = 'Number of positive tests')
 	# ax1.plot(df_daily_covid.index, df_daily_covid['Number_of_tests'])
 	#plot test positivity rate
-	lns2 = ax2.plot(df_daily_covid.index, df_daily_covid['Positivity_ratio']*100, label = 'Positivity rate', color = 'maroon')
+	lns2 = ax2.plot(df_daily_covid.index, df_daily_covid['Positivity_ratio']*100, label = 'Positivity rate', color = '#D10000')
 
 	#also plot government response
-	lns3 = ax3.plot(df_response.index, df_response['StringencyIndex'], label = 'Stringency index', color = 'indigo')
+	lns3 = ax3.plot(df_response.index, df_response['StringencyIndex'], label = 'Stringency index', color = 'black')
 
 	ax1.grid(linestyle = ':')
 
@@ -581,7 +579,7 @@ def plot_daily_results():
 	ax1.set_xlabel(f'Estimated infection date\n(reporting date - incubation period (~6 days) - test delays (~{time_to_test_delay + result_delay} days))')
 	ax1.set_ylabel('Number of positive tests per day')
 	ax2.set_ylabel('Positivity rate [%]')
-	ax3.set_ylabel('Oxfort Stringency Index')
+	ax3.set_ylabel('Oxford Stringency Index')
 
 	ax1.set_title('SARS-CoV-2 tests in the Netherlands')
 
