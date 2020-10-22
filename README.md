@@ -36,8 +36,11 @@ Sewage measurements:
 [Raw data](https://raw.githubusercontent.com/OxCGRT/covid-policy-tracker/master/data/OxCGRT_latest.csv)
 
 [Codebook](https://github.com/OxCGRT/covid-policy-tracker/blob/master/documentation/codebook.md) that indicates the meaning for various flags etc.
+[Methodology](https://github.com/OxCGRT/covid-policy-tracker/blob/master/documentation/index_methodology.md) for calculating the indices.
 
 [Single country single day API](https://covidtrackerapi.bsg.ox.ac.uk/api/v2/stringency/actions/NLD/2020-09-20)
+
+Timeline of coronavirus in the Netherlands, including each change in government response: [link](https://www.tijdlijncoronavirus.nl/)
 
 #### Detailed statistics
 Incubation period

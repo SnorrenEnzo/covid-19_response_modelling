@@ -95,23 +95,35 @@ def load_deathdata():
 
 def load_government_response_data():
 	url = 'https://raw.githubusercontent.com/OxCGRT/covid-policy-tracker/master/data/OxCGRT_latest.csv'
-	fname = f'{dataloc}OxCGRT_latest.csv'
+	raw_fname = f'{dataloc}OxCGRT_latest.csv'
 
-	downloadSave(url, fname, check_file_exists = True)
+	#filename of the csv data containing only the desired dutch data
+	nl_fname = f'{dataloc}OxCGRT_NL.csv'
 
+	#read the data from the Netherlands only, this allows you to easily add extra
+	#data which the Oxfort team has not yet added themselves (recent response etc)
+	try:
+		df_response = pd.read_csv(nl_fname)
 
-	df_response = pd.read_csv(fname)
+		#read dates
+		df_response['Date'] = pd.to_datetime(df_response['Date'], format = '%Y-%m-%d')
+		df_response.set_index('Date', inplace = True)
+	except OSError:
+		downloadSave(url, raw_fname, check_file_exists = True)
 
-	#filter on the netherlands
-	df_response = df_response.loc[df_response['CountryCode'] == 'NLD']
+		df_response = pd.read_csv(raw_fname)
 
-	#select desired columns
-	df_response = df_response[['Date', 'StringencyIndex']]
+		#filter on the netherlands
+		df_response = df_response.loc[df_response['CountryCode'] == 'NLD']
 
-	#read dates
-	df_response['Date'] = pd.to_datetime(df_response['Date'], format = '%Y%m%d')
+		#select desired columns
+		df_response = df_response[['Date', 'StringencyIndex']]
 
-	df_response.set_index('Date', inplace = True)
+		#read dates
+		df_response['Date'] = pd.to_datetime(df_response['Date'], format = '%Y%m%d')
+		df_response.set_index('Date', inplace = True)
+
+		df_response.to_csv(nl_fname)
 
 	return df_response
 
@@ -510,11 +522,15 @@ def plot_daily_results():
 	df_daily_covid = load_daily_covid(correct_for_delay = False)
 	df_n_tests = load_number_of_tests()
 
+	df_response = load_government_response_data()
+
+	print(df_response)
+
 	### correct for the delay between the onset of symptoms and the result of the test
 	#for source of incubation period, see the readme
 	incubation_period = 6 #days, left of average of 8.3 due to extremely skewed distribution
 	#test delay determined from anecdotal evidence
-	time_to_test_delay = 2 #days
+	time_to_test_delay = 3 #days
 	result_delay = 1
 
 	#correct the results to the day of the test
@@ -522,6 +538,8 @@ def plot_daily_results():
 
 	#merge datasets
 	df_daily_covid = df_daily_covid.merge(df_n_tests[['Number_of_tests']], right_index = True, left_index = True)
+
+	print(df_daily_covid[['Number_of_tests', 'Total_reported']].tail())
 
 	#determine test positivity rate
 	df_daily_covid['Positivity_ratio'] = df_daily_covid['Total_reported']/df_daily_covid['Number_of_tests']
@@ -533,27 +551,37 @@ def plot_daily_results():
 	#select second wave of infections
 	startdate = '2020-07-01'
 	df_daily_covid = df_daily_covid.loc[df_daily_covid.index > startdate]
+	df_response = df_response.loc[df_response.index > startdate]
 
 	print(df_daily_covid['Positivity_ratio'])
 
 	fig, ax1 = plt.subplots()
 
 	ax2 = ax1.twinx()
+	#third y axis for government response
+	ax3 = ax1.twinx()
+	ax3.spines['right'].set_position(('axes', 1.12))
+
 
 	#plot number of positive tests
 	lns1 = ax1.plot(df_daily_covid.index, df_daily_covid['Total_reported'], label = 'Number of positive tests')
+	# ax1.plot(df_daily_covid.index, df_daily_covid['Number_of_tests'])
 	#plot test positivity rate
 	lns2 = ax2.plot(df_daily_covid.index, df_daily_covid['Positivity_ratio']*100, label = 'Positivity rate', color = 'maroon')
 
+	#also plot government response
+	lns3 = ax3.plot(df_response.index, df_response['StringencyIndex'], label = 'Stringency index', color = 'indigo')
+
 	ax1.grid(linestyle = ':')
 
-	lns = lns1 + lns2
+	lns = lns1 + lns2 + lns3
 	labs = [l.get_label() for l in lns]
 	ax1.legend(lns, labs, loc='best')
 
-	ax1.set_xlabel('Estimated infection date\n(reporting date - incubation period (~6 days) - test delays (~3 days))')
+	ax1.set_xlabel(f'Estimated infection date\n(reporting date - incubation period (~6 days) - test delays (~{time_to_test_delay + result_delay} days))')
 	ax1.set_ylabel('Number of positive tests per day')
 	ax2.set_ylabel('Positivity rate [%]')
+	ax3.set_ylabel('Oxfort Stringency Index')
 
 	ax1.set_title('SARS-CoV-2 tests in the Netherlands')
 
@@ -1090,7 +1118,7 @@ def estimate_recent_prevalence():
 def main():
 	# government_response_results_simple()
 
-	estimate_recent_R()
+	# estimate_recent_R()
 
 	# estimate_recent_prevalence()
 
@@ -1098,7 +1126,7 @@ def main():
 
 	# plot_mobility()
 
-	# plot_daily_results()
+	plot_daily_results()
 
 	# plot_sewage()
 
