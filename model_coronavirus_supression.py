@@ -986,7 +986,11 @@ def estimate_recent_R():
 		#indicate one to one relationship
 		xlims = ax.get_xlim()
 		ylims = ax.get_ylim()
-		ax.plot([min(xlims), max(xlims)], [min(ylims), max(ylims)], color = 'black', label = 'Ideal predictions')
+
+		startpoint = min((min(xlims), min(ylims)))
+		endpoint = max((max(xlims), max(ylims)))
+
+		ax.plot([startpoint, endpoint], [startpoint, endpoint], color = 'black', label = 'Ideal predictions')
 		ax.set_xlim(xlims)
 		ax.set_ylim(ylims)
 
@@ -1031,9 +1035,6 @@ def estimate_recent_R():
 		plt.savefig(f'{plotloc}Mobility_R_prediction.png', dpi = 200, bbox_inches = 'tight')
 		plt.close()
 
-
-
-
 def estimate_recent_prevalence():
 	"""
 	Estimate the recent prevalence based on the test positivity ratio
@@ -1077,9 +1078,11 @@ def estimate_recent_prevalence():
 	#select second wave of infections with the high test rate, but stop at the
 	#section where the prevalence flattens (seems unrealistic)
 	startdate = '2020-08-01'
-	enddate = '2020-09-30'
+	enddate = '2020-10-08'
 	df_predictors_sel = df_predictors.loc[(df_predictors.index > startdate) & (df_predictors.index < enddate)]
 	df_prevalence_sel = df_prevalence.loc[(df_prevalence.index > startdate) & (df_prevalence.index < enddate)]
+
+	print(df_predictors)
 
 
 	#discard days with too low number of positive tests per million for determining the correlation
@@ -1109,42 +1112,55 @@ def estimate_recent_prevalence():
 	'''
 
 	### get data into the shape required for sklearn functions
-	X = dataframes_to_NDarray(df_predictors_cor, parameters_used)
+	X_train = dataframes_to_NDarray(df_predictors_cor, parameters_used)
 
-	Y = np.array(df_prevalence_cor['prev_avg'])
-	weight = 1/np.array(df_prevalence_cor['prev_abs_error'])
+	Y_train = np.array(df_prevalence_cor['prev_avg'])
+	weight_train = 1/np.array(df_prevalence_cor['prev_abs_error'])
 
 	### apply regression
 	# clf = Ridge(alpha = 1.)
 	clf = LinearRegression()
 	# clf = AdaBoostRegressor()
-	clf.fit(X, Y, sample_weight = weight)
+	clf.fit(X_train, Y_train, sample_weight = weight_train)
 
-	r_squared = clf.score(X, Y, sample_weight = weight)
+	r_squared = clf.score(X_train, Y_train, sample_weight = weight_train)
 
 	print(r_squared)
-	'''
+
+
+	### plot accuracy of predictions using the predictions versus ground truth
 	fig, ax = plt.subplots()
 
-	ax.scatter(df_predictors_sel['Total_per_million'], df_prevalence_sel['prev_avg'],
-					alpha = 0.6, color = 'black', s = 8)
+	train_pred = clf.predict(X_train)
+	ax.scatter(Y_train, train_pred, alpha = 0.4, color = 'navy', s = 8, label = f'Predictions ($R^2$ = {r_squared:0.03f})')
 
-	#plot the model
-	xpoints = np.linspace(np.min(df_daily_covid_cor['Total_per_million']), np.max(df_daily_covid_cor['Total_per_million']), num = 500)
-	ax.plot(xpoints, clf.predict(xpoints), label = r'Fit ($R^2 = $' + f'{r_squared:0.03f})', color = 'maroon')
+	#plot error bars
+	errorbar_data = np.stack((df_prevalence_cor['prev_low'].values, df_prevalence_cor['prev_up'].values))
+	ax.errorbar(Y_train, train_pred, xerr = errorbar_data, ecolor = 'navy', elinewidth = 0.5, capthick = 0.5, capsize = 2, errorevery = 2, ls = 'none')
+
+
+	#indicate one to one relationship
+	xlims = ax.get_xlim()
+	ylims = ax.get_ylim()
+
+	startpoint = min((min(xlims), min(ylims)))
+	endpoint = max((max(xlims), max(ylims)))
+
+	ax.plot([startpoint, endpoint], [startpoint, endpoint], color = 'black', label = 'Ideal predictions (linear model)')
+	ax.set_xlim(xlims)
+	ax.set_ylim(ylims)
 
 	ax.grid(linestyle = ':')
-
 	ax.legend(loc = 'best')
 
-	ax.set_xlabel('Number of cases per million reported per day')
-	ax.set_ylabel('Prevalence per million')
+	ax.set_xlabel('Measured prevalence [per million]')
+	ax.set_ylabel('Predicted prevalence [per million]')
 
-	ax.set_title('Correlation between prevalence and number of cases reported per day,\nadjusted for incubation period and test delays (~11 days)')
+	ax.set_title('Prevalence prediction accuracy using mobility data')
 
-	plt.savefig(f'{plotloc}Prevalence_vs_positive_tests_correlation.png', dpi = 200, bbox_inches = 'tight')
+	plt.savefig(f'{plotloc}Prevalence_prediction_accuracy.png', dpi = 200, bbox_inches = 'tight')
 	plt.close()
-	'''
+
 
 	### Now make predictions for the most recent data
 	#select the positive test data
@@ -1203,7 +1219,7 @@ def main():
 
 	# estimate_recent_R()
 
-	# estimate_recent_prevalence()
+	estimate_recent_prevalence()
 
 	# plot_prevalence_R()
 
@@ -1213,7 +1229,7 @@ def main():
 
 	# plot_sewage()
 
-	plot_hospitalization()
+	# plot_hospitalization()
 
 	'''
 	df_prevalence, df_R0 = load_prevalence_R0_data()
