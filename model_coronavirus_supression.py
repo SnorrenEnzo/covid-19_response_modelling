@@ -174,7 +174,10 @@ def load_mobility_data(smooth = False, smoothsize = 7):
 
 		#remove downloaded files
 		shutil.rmtree(unziploc)
-		os.remove(google_mobility_fname_zip)
+		#also remove zip file
+		# os.remove(google_mobility_fname_zip)
+	else:
+		google_mobility_fname = dataloc + 'google_' + google_mobility_fname
 
 	google_col_rename = {
 		'retail_and_recreation_percent_change_from_baseline': 'retail_recreation',
@@ -1030,12 +1033,12 @@ def estimate_recent_R():
 
 		#apply ridge regression, see here for more info:
 		#https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.Ridge.html#sklearn.linear_model.Ridge
-		# clf = Ridge(alpha = 1.)
+		clf = Ridge(alpha = 1.)
 		# clf = Lasso()
 		#apply adaboost regression, see here for more info:
 		#https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.AdaBoostRegressor.html#sklearn.ensemble.AdaBoostRegressor
 		# clf = AdaBoostRegressor()
-		clf = RandomForestRegressor()
+		# clf = RandomForestRegressor()
 		clf.fit(X_train, Y_train, sample_weight = weight_train)
 		# clf.fit(X_train, Y_train)
 
@@ -1281,13 +1284,13 @@ def estimate_recent_prevalence():
 def main():
 	# government_response_results_simple()
 
-	# estimate_recent_R()
+	estimate_recent_R()
 
 	# estimate_recent_prevalence()
 
 	# plot_prevalence_R()
 
-	plot_mobility()
+	# plot_mobility()
 
 	# plot_daily_results()
 
