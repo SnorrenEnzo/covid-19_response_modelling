@@ -252,7 +252,7 @@ def load_daily_covid(correct_for_delay = False):
 
 	return df_daily_covid
 
-def load_number_of_tests():
+def load_number_of_tests(enddate = None):
 	"""
 	Data source:
 	https://www.rivm.nl/documenten/wekelijkse-update-epidemiologische-situatie-covid-19-in-nederland
@@ -275,14 +275,49 @@ def load_number_of_tests():
 	#first convert units to per day
 	df_n_tests['Number_of_tests'] /= 7
 
+	#and ignore last known date (due to incomplete data) if given a final date
+	if enddate != None:
+		df_n_tests = df_n_tests[:-1]
+
 	#resample to once a day
 	df_n_tests = df_n_tests.resample('1d').mean()
 
 	#copy the column for inspection of the interpolation results
 	df_n_tests['Number_of_tests_raw'] = df_n_tests['Number_of_tests']
 
-	#then interpolate
+	#then interpolate/extrapolate
 	df_n_tests['Number_of_tests'] = df_n_tests['Number_of_tests'].interpolate(method = 'linear')
+
+	#now if the enddate is given, we also want to extrapolate
+	if enddate != None:
+		#select on which section we want to extrapolate (up to 3 weeks back)
+		start_extrapolation_pred = df_n_tests.index[-1]
+		start_extrapolation = start_extrapolation_pred - pd.Timedelta(f'7 day')
+		df_extrap_train = df_n_tests.loc[df_n_tests.index > start_extrapolation]
+		#get a numerical index
+		X_train = df_extrap_train.reset_index().drop('Date', 1).index.astype(float).values
+		Y_train = df_extrap_train['Number_of_tests'].values
+
+		## train model
+		clf = LinearRegression()
+		clf.fit(X_train[:,None], Y_train)
+
+		## now make the proper array
+		#set the enddate
+		df_n_tests.loc[enddate] = [np.nan, np.nan]
+		#add dates in between
+		df_n_tests = df_n_tests.resample('1d').mean()
+
+		#extract the rows for extrapolation
+		df_extrap_pred = df_n_tests.loc[df_n_tests.index > start_extrapolation]
+		selectindex = (df_extrap_pred.index > start_extrapolation_pred)
+		#get numerical index
+		X_pred = df_extrap_pred.reset_index().drop('Date', 1).index.astype(float).values[selectindex]
+		#get predictions
+		df_temp = pd.DataFrame(data = clf.predict(X_pred[:,None]), index = df_extrap_pred.loc[df_extrap_pred.index > start_extrapolation_pred].index, columns = ['Number_of_tests'])
+
+		#now update the interpolated array
+		df_n_tests.update(df_temp)
 
 	return df_n_tests
 
@@ -584,7 +619,7 @@ def plot_daily_results():
 	Plot up to date test results
 	"""
 	df_daily_covid = load_daily_covid(correct_for_delay = False)
-	df_n_tests = load_number_of_tests()
+	df_n_tests = load_number_of_tests(enddate = df_daily_covid.index.values[-1])
 
 	df_response = load_government_response_data()
 
@@ -627,7 +662,7 @@ def plot_daily_results():
 
 	#plot number of positive tests
 	lns1 = ax1.plot(df_daily_covid.index, df_daily_covid['Total_reported'], label = 'Number of positive tests')
-	# ax1.plot(df_daily_covid.index, df_daily_covid['Number_of_tests'])
+	ax1.plot(df_daily_covid.index, df_daily_covid['Number_of_tests'])
 	#plot test positivity rate
 	lns2 = ax2.plot(df_daily_covid.index, df_daily_covid['Positivity_ratio']*100, label = 'Positivity rate', color = '#D10000')
 
@@ -1219,13 +1254,13 @@ def main():
 
 	# estimate_recent_R()
 
-	estimate_recent_prevalence()
+	# estimate_recent_prevalence()
 
 	# plot_prevalence_R()
 
 	# plot_mobility()
 
-	# plot_daily_results()
+	plot_daily_results()
 
 	# plot_sewage()
 
