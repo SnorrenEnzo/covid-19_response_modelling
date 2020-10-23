@@ -369,6 +369,19 @@ def load_IC_data():
 	#join dataframes
 	df_IC = df_IC_count.join(df_IC_new)
 
+	#determine how many people left the IC (alive or not)
+	df_IC['Removed'] = df_IC['Amount'].diff() - df_IC['New']
+	#set first entry to zero so that we can convert to ints again
+	df_IC['Removed'].iloc[0] = 0
+	df_IC['Removed'] = df_IC['Removed'].astype(int)
+	#there are a few cases in this field where there are extra people coming in
+	#probably due to errors in reporting. Shift these to new
+	loc = df_IC['Removed'] > 0
+	df_IC['New'].values[loc] += df_IC['Removed'].values[loc]
+	df_IC['Removed'].values[loc] = 0
+
+	df_IC['Removed'] = df_IC['Removed'].abs()
+
 	return df_IC
 
 
@@ -651,6 +664,24 @@ def plot_hospitalization():
 
 	"""
 	df_IC = load_IC_data()
+
+	print(df_IC)
+
+	fig, ax = plt.subplots()
+
+	ax.plot(df_IC.index, df_IC.New, label = 'New')
+	ax.plot(df_IC.index, df_IC.Removed, label = 'Removed')
+
+	ax.set_ylabel('Change')
+	ax.set_title('Change in IC occupation')
+
+	ax.legend(loc = 'best')
+	ax.grid(linestyle = ':')
+
+	fig.autofmt_xdate()
+
+	plt.savefig(f'{plotloc}Hospital_IC_change.png', dpi = 200, bbox_inches = 'tight')
+	plt.close()
 
 
 def government_response_results_simple():
