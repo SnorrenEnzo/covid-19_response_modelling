@@ -288,6 +288,9 @@ def load_number_of_tests(enddate = None):
 	#then interpolate/extrapolate
 	df_n_tests['Number_of_tests'] = df_n_tests['Number_of_tests'].interpolate(method = 'linear')
 
+	#indicate which part was extrapolated
+	df_n_tests['Extrapolated'] = 0
+
 	#now if the enddate is given, we also want to extrapolate
 	if enddate != None:
 		#select on which section we want to extrapolate (up to 3 weeks back)
@@ -304,7 +307,7 @@ def load_number_of_tests(enddate = None):
 
 		## now make the proper array
 		#set the enddate
-		df_n_tests.loc[enddate] = [np.nan, np.nan]
+		df_n_tests.loc[enddate] = [np.nan, np.nan, 1]
 		#add dates in between
 		df_n_tests = df_n_tests.resample('1d').mean()
 
@@ -315,9 +318,13 @@ def load_number_of_tests(enddate = None):
 		X_pred = df_extrap_pred.reset_index().drop('Date', 1).index.astype(float).values[selectindex]
 		#get predictions
 		df_temp = pd.DataFrame(data = clf.predict(X_pred[:,None]), index = df_extrap_pred.loc[df_extrap_pred.index > start_extrapolation_pred].index, columns = ['Number_of_tests'])
+		#indicate that these values are extrapolated
+		df_temp['Extrapolated'] = 1
 
 		#now update the interpolated array
 		df_n_tests.update(df_temp)
+
+		df_n_tests = df_n_tests.astype({'Extrapolated': 'bool'})
 
 	return df_n_tests
 
@@ -634,7 +641,7 @@ def plot_daily_results():
 	df_daily_covid.index = df_daily_covid.index - pd.Timedelta(f'{result_delay} day')
 
 	#merge datasets
-	df_daily_covid = df_daily_covid.merge(df_n_tests[['Number_of_tests']], right_index = True, left_index = True)
+	df_daily_covid = df_daily_covid.merge(df_n_tests[['Number_of_tests', 'Extrapolated']], right_index = True, left_index = True)
 
 	print(df_n_tests.tail())
 
@@ -652,6 +659,7 @@ def plot_daily_results():
 
 	print(df_daily_covid['Positivity_ratio'].tail())
 
+	### make the plot
 	fig, ax1 = plt.subplots()
 
 	ax2 = ax1.twinx()
@@ -659,19 +667,19 @@ def plot_daily_results():
 	ax3 = ax1.twinx()
 	ax3.spines['right'].set_position(('axes', 1.12))
 
-
 	#plot number of positive tests
-	lns1 = ax1.plot(df_daily_covid.index, df_daily_covid['Total_reported'], label = 'Number of positive tests')
-	ax1.plot(df_daily_covid.index, df_daily_covid['Number_of_tests'])
+	lns1 = ax1.plot(df_daily_covid.index, df_daily_covid['Total_reported'],	label = 'Number of positive tests')
+	# ax1.plot(df_daily_covid.index, df_daily_covid['Number_of_tests'])
 	#plot test positivity rate
-	lns2 = ax2.plot(df_daily_covid.index, df_daily_covid['Positivity_ratio']*100, label = 'Positivity rate', color = '#D10000')
+	lns2 = ax2.plot(df_daily_covid[~df_daily_covid['Extrapolated']].index, df_daily_covid[~df_daily_covid['Extrapolated']]['Positivity_ratio']*100, label = 'Positivity rate', color = '#D10000')
+	lns4 = ax2.plot(df_daily_covid[df_daily_covid['Extrapolated']].index, df_daily_covid[df_daily_covid['Extrapolated']]['Positivity_ratio']*100, label = 'Positivity rate (number of\ntests extrapolated)', color = '#D10000', linestyle = '--')
 
 	#also plot government response
 	lns3 = ax3.plot(df_response.index, df_response['StringencyIndex'], label = 'Stringency index', color = 'black')
 
 	ax1.grid(linestyle = ':')
 
-	lns = lns1 + lns2 + lns3
+	lns = lns1 + lns2 + lns3 + lns4
 	labs = [l.get_label() for l in lns]
 	ax1.legend(lns, labs, loc='best')
 
