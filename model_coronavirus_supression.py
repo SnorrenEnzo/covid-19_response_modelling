@@ -9,6 +9,8 @@ import matplotlib.dates as mdates
 import urllib.request
 import shutil
 import os, sys, glob
+import json
+
 
 from sklearn.linear_model import Ridge, LinearRegression, Lasso
 from sklearn.ensemble import AdaBoostRegressor, RandomForestRegressor
@@ -84,6 +86,7 @@ def load_deathdata():
 					}
 	for monthname, monthidx in zip(dutchmonths.keys(), dutchmonths.values()):
 		df_deaths['Datum van overlijden'] = df_deaths['Datum van overlijden'].str.replace(monthname, str(monthidx))
+
 	df_deaths['Datum van overlijden'] = pd.to_datetime(df_deaths['Datum van overlijden'], format = '%d %m %Y')
 
 	#rename columns
@@ -275,8 +278,11 @@ def load_number_of_tests():
 	#resample to once a day
 	df_n_tests = df_n_tests.resample('1d').mean()
 
+	#copy the column for inspection of the interpolation results
+	df_n_tests['Number_of_tests_raw'] = df_n_tests['Number_of_tests']
+
 	#then interpolate
-	df_n_tests = df_n_tests.interpolate(method = 'linear')
+	df_n_tests['Number_of_tests'] = df_n_tests['Number_of_tests'].interpolate(method = 'linear')
 
 	return df_n_tests
 
@@ -319,6 +325,51 @@ def load_sewage_data(smooth = False, windowsize = 3, shiftdates = False):
 		df_sewage['RNA_per_ml_smooth'] = df_sewage['RNA_per_ml'].rolling(windowsize).mean()
 
 	return df_sewage
+
+def load_IC_data():
+	"""
+	Load IC data, see https://www.databronnencovid19.nl/Bron?naam=Nationale-Intensive-Care-Evaluatie
+	"""
+	IC_count_url = 'https://stichting-nice.nl/covid-19/public/intake-count/'
+	IC_new_url = 'https://stichting-nice.nl/covid-19/public/new-intake/'
+
+	IC_count_fname = f'{dataloc}IC_count.json'
+	IC_new_fname = f'{dataloc}IC_new.json'
+
+	downloadSave(IC_count_url, IC_count_fname, check_file_exists = True)
+	downloadSave(IC_new_url, IC_new_fname, check_file_exists = True)
+
+	#the IC_new file has one set of square brackets too many, so lets remove them
+	tempfile = 'temp.temp'
+	with open(IC_new_fname, 'r') as fin, open(tempfile, 'w') as fout:
+		filecontent = fin.read()
+
+		if filecontent.count('[') > 1:
+			#remove the appended array
+			filecontent = filecontent.split(',[')[0]
+			#remove first bracket
+			filecontent = filecontent[1:]
+
+		fout.write(filecontent)
+
+		os.rename(tempfile, IC_new_fname)
+
+	df_IC_count = pd.read_json(IC_count_fname)
+	df_IC_new = pd.read_json(IC_new_fname)
+
+	df_IC_count = df_IC_count.rename(columns = {'date': 'Date', 'value': 'Amount'})
+	df_IC_new = df_IC_new.rename(columns = {'date': 'Date', 'value': 'New'})
+
+	df_IC_count['Date'] = pd.to_datetime(df_IC_count['Date'], format = '%Y-%m-%d')
+	df_IC_new['Date'] = pd.to_datetime(df_IC_new['Date'], format = '%Y-%m-%d')
+
+	df_IC_count.set_index('Date', inplace = True)
+	df_IC_new.set_index('Date', inplace = True)
+
+	#join dataframes
+	df_IC = df_IC_count.join(df_IC_new)
+
+	return df_IC
 
 
 def average_kernel(size = 7):
@@ -537,7 +588,7 @@ def plot_daily_results():
 	#merge datasets
 	df_daily_covid = df_daily_covid.merge(df_n_tests[['Number_of_tests']], right_index = True, left_index = True)
 
-	print(df_daily_covid[['Number_of_tests', 'Total_reported']].tail())
+	print(df_n_tests.tail())
 
 	#determine test positivity rate
 	df_daily_covid['Positivity_ratio'] = df_daily_covid['Total_reported']/df_daily_covid['Number_of_tests']
@@ -595,8 +646,11 @@ def plot_daily_results():
 	plt.savefig(f'{plotloc}Tests_second_wave.png', dpi = 200, bbox_inches = 'tight')
 	plt.close()
 
-	# print(load_daily_covid)
+def plot_hospitalization():
+	"""
 
+	"""
+	df_IC = load_IC_data()
 
 
 def government_response_results_simple():
@@ -1124,9 +1178,11 @@ def main():
 
 	# plot_mobility()
 
-	plot_daily_results()
+	# plot_daily_results()
 
 	# plot_sewage()
+
+	plot_hospitalization()
 
 	'''
 	df_prevalence, df_R0 = load_prevalence_R0_data()
