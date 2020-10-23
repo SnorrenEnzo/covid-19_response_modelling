@@ -9,7 +9,7 @@ import matplotlib.dates as mdates
 import urllib.request
 import shutil
 import os, sys, glob
-import json
+from zipfile import ZipFile
 
 
 from sklearn.linear_model import Ridge, LinearRegression, Lasso
@@ -151,8 +151,30 @@ def load_mobility_data(smooth = False, smoothsize = 7):
 	- Residential
 	"""
 
-	#first load google data, this is the easiest
-	google_mobility_fname = f'{dataloc}google_2020_NL_Region_Mobility_Report.csv'
+	### first load google data
+	#download zip
+	google_mobility_url = 'https://www.gstatic.com/covid19/mobility/Region_Mobility_Report_CSVs.zip'
+	google_mobility_fname_zip = f'{dataloc}google_2020_All_Region_Mobility_Report.zip'
+	google_mobility_fname = f'2020_NL_Region_Mobility_Report.csv'
+	downloaded = downloadSave(google_mobility_url, google_mobility_fname_zip, check_file_exists = True)
+
+	if downloaded:
+		#unzip
+		unziploc = f'{dataloc}unzip/'
+		with ZipFile(google_mobility_fname_zip, 'r') as zfile:
+			os.mkdir(unziploc)
+			zfile.extractall(unziploc)
+
+		#get the desired file
+		zipfilename = glob.glob(unziploc + google_mobility_fname)[0]
+		print(zipfilename)
+		#rename
+		google_mobility_fname = dataloc + 'google_' + google_mobility_fname
+		os.rename(zipfilename, google_mobility_fname)
+
+		#remove downloaded files
+		shutil.rmtree(unziploc)
+		os.remove(google_mobility_fname_zip)
 
 	google_col_rename = {
 		'retail_and_recreation_percent_change_from_baseline': 'retail_recreation',
@@ -1222,7 +1244,8 @@ def estimate_recent_prevalence():
 	#then sort again
 	df_prevalence_pred = df_prevalence_pred.sort_index()
 
-	#now plot together with the old data
+
+	###now plot together with the old data
 	fig, ax = plt.subplots()
 
 	#old data
@@ -1255,8 +1278,6 @@ def estimate_recent_prevalence():
 	plt.savefig(f'{plotloc}Prevalence_second_wave_with_predictions.png', dpi = 200, bbox_inches = 'tight')
 	plt.close()
 
-	#make predictions
-
 def main():
 	# government_response_results_simple()
 
@@ -1266,9 +1287,9 @@ def main():
 
 	# plot_prevalence_R()
 
-	# plot_mobility()
+	plot_mobility()
 
-	plot_daily_results()
+	# plot_daily_results()
 
 	# plot_sewage()
 

@@ -1,8 +1,7 @@
 ## Modelling the outcome of Dutch government coronavirus response
 
 ### TODO:
-- Auto download Apple/Google data
-- Extrapolate number of tests performed from existing data points to counteract overestimated positivity rate
+- ...
 
 ### Data sources
 
@@ -21,6 +20,8 @@ Weekly update [link](https://www.rivm.nl/documenten/wekelijkse-update-epidemiolo
 A huge list of data sources: [link](https://www.databronnencovid19.nl/)
 
 Predictions: [link](https://covid19.healthdata.org/netherlands)
+
+NICE intensive care data: [link](https://www.databronnencovid19.nl/Bron?naam=Nationale-Intensive-Care-Evaluatie)
 
 #### Possible early predictors (for prevalence and R)
 
