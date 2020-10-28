@@ -18,6 +18,7 @@ from sklearn.ensemble import AdaBoostRegressor, RandomForestRegressor
 dataloc = './Data/'
 plotloc = './Plots/'
 plotloc_government_response = './Gov_response_plots/'
+mobplotloc = f'{plotloc}Mobility/'
 
 #source: https://www.cbs.nl/nl-nl/visualisaties/bevolkingsteller
 n_inhabitants_NL = 17455552
@@ -589,7 +590,7 @@ def plot_mobility():
 	ax.legend(loc = 'lower center', ncol = 3, prop = {'size': 9})
 	ax.xaxis.set_tick_params(rotation = 45)
 
-	plt.savefig(f'{plotloc}Mobility_change_Google.png', dpi = 200, bbox_inches = 'tight')
+	plt.savefig(f'{mobplotloc}Mobility_change_Google.png', dpi = 200, bbox_inches = 'tight')
 	plt.close()
 
 
@@ -610,7 +611,7 @@ def plot_mobility():
 	ax.legend(loc = 'lower center', ncol = 3, prop = {'size': 9})
 	ax.xaxis.set_tick_params(rotation = 45)
 
-	plt.savefig(f'{plotloc}Mobility_change_Apple.png', dpi = 200, bbox_inches = 'tight')
+	plt.savefig(f'{mobplotloc}Mobility_change_Apple.png', dpi = 200, bbox_inches = 'tight')
 	plt.close()
 
 def plot_sewage():
@@ -624,7 +625,7 @@ def plot_sewage():
 	fig, ax1 = plt.subplots()
 	ax2 = ax1.twinx()
 
-	ln1 = ax1.plot(df_sewage.index, df_sewage.n_measurements, color = 'navy', label = 'Number of measurements')
+	ln1 = ax1.plot(df_sewage.index, df_sewage.n_measurements, color = 'navy', label = 'Number of measurements', alpha = 0.7)
 
 	ax2.scatter(df_sewage.index, df_sewage.RNA_per_ml, color = 'maroon', label = 'Average RNA abundance', alpha = 0.4, s = 5)
 	ln2 = ax2.plot(df_sewage.index, df_sewage.RNA_per_ml_smooth, color = 'maroon', label = 'Average RNA abundance smoothed')
@@ -1008,7 +1009,7 @@ def estimate_recent_R():
 		plt.xlabel('Mobility change from baseline [%]')
 		plt.ylabel('$R$')
 
-		plt.savefig(f'{plotloc}Mobility_R_correlation.png', dpi = 200, bbox_inches = 'tight')
+		plt.savefig(f'{mobplotloc}Mobility_R_correlation.png', dpi = 200, bbox_inches = 'tight')
 		plt.close()
 
 	### combine the best correlating mobility metrics to predict R
@@ -1070,7 +1071,7 @@ def estimate_recent_R():
 
 		ax.set_title('R prediction accuracy using mobility data')
 
-		plt.savefig(f'{plotloc}Mobility_R_prediction_accuracy.png', dpi = 200, bbox_inches = 'tight')
+		plt.savefig(f'{mobplotloc}Mobility_R_prediction_accuracy.png', dpi = 200, bbox_inches = 'tight')
 		plt.close()
 
 
@@ -1100,7 +1101,7 @@ def estimate_recent_R():
 		myfmt = mdates.DateFormatter('%d-%m-%Y')
 		ax.xaxis.set_major_formatter(myfmt)
 
-		plt.savefig(f'{plotloc}Mobility_R_prediction.png', dpi = 200, bbox_inches = 'tight')
+		plt.savefig(f'{mobplotloc}Mobility_R_prediction.png', dpi = 200, bbox_inches = 'tight')
 		plt.close()
 
 def estimate_recent_prevalence():
@@ -1284,17 +1285,17 @@ def estimate_recent_prevalence():
 def main():
 	# government_response_results_simple()
 
-	estimate_recent_R()
+	# estimate_recent_R()
 
 	# estimate_recent_prevalence()
 
 	# plot_prevalence_R()
 
-	# plot_mobility()
+	plot_mobility()
 
 	# plot_daily_results()
 
-	# plot_sewage()
+	plot_sewage()
 
 	# plot_hospitalization()
 
