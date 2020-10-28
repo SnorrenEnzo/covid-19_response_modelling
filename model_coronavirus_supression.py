@@ -685,6 +685,7 @@ def plot_daily_results():
 
 	print(df_daily_covid['Positivity_ratio'].tail())
 
+
 	### make the plot
 	fig, ax1 = plt.subplots()
 
@@ -695,22 +696,23 @@ def plot_daily_results():
 
 	#plot number of positive tests
 	lns1 = ax1.plot(df_daily_covid.index, df_daily_covid['Total_reported'],	label = 'Number of positive tests')
-	# ax1.plot(df_daily_covid.index, df_daily_covid['Number_of_tests'])
+	#and the number of tests
+	lns2 = ax1.plot(df_daily_covid.index, df_daily_covid['Number_of_tests'], label = 'Number of tests')
 	#plot test positivity rate
-	lns2 = ax2.plot(df_daily_covid[~df_daily_covid['Extrapolated']].index, df_daily_covid[~df_daily_covid['Extrapolated']]['Positivity_ratio']*100, label = 'Positivity rate', color = '#D10000')
+	lns3 = ax2.plot(df_daily_covid[~df_daily_covid['Extrapolated']].index, df_daily_covid[~df_daily_covid['Extrapolated']]['Positivity_ratio']*100, label = 'Positivity rate', color = '#D10000')
 	lns4 = ax2.plot(df_daily_covid[df_daily_covid['Extrapolated']].index, df_daily_covid[df_daily_covid['Extrapolated']]['Positivity_ratio']*100, label = 'Positivity rate (number of\ntests extrapolated)', color = '#D10000', linestyle = '--')
 
 	#also plot government response
-	lns3 = ax3.plot(df_response.index, df_response['StringencyIndex'], label = 'Stringency index', color = 'black')
+	lns5 = ax3.plot(df_response.index, df_response['StringencyIndex'], label = 'Stringency index', color = 'black')
 
 	ax1.grid(linestyle = ':')
 
-	lns = lns1 + lns2 + lns3 + lns4
+	lns = lns1 + lns2 + lns3 + lns4 + lns5
 	labs = [l.get_label() for l in lns]
 	ax1.legend(lns, labs, loc='best')
 
 	ax1.set_xlabel(f'Estimated infection date\n(reporting date - incubation period (~6 days) - test delays (~{time_to_test_delay + result_delay} days))')
-	ax1.set_ylabel('Number of positive tests per day')
+	ax1.set_ylabel('Number of tests per day')
 	ax2.set_ylabel('Positivity rate [%]')
 	ax3.set_ylabel('Oxford Stringency Index')
 
@@ -1291,11 +1293,11 @@ def main():
 
 	# plot_prevalence_R()
 
-	plot_mobility()
+	# plot_mobility()
 
-	# plot_daily_results()
+	plot_daily_results()
 
-	plot_sewage()
+	# plot_sewage()
 
 	# plot_hospitalization()
 
