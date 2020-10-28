@@ -524,22 +524,36 @@ def dataframes_to_NDarray(df, columns):
 
 def plot_prevalence_R():
 	df_prevalence, df_R0 = load_prevalence_R0_data()
+	df_response = load_government_response_data()
 
-	print(np.nanmin(df_prevalence['prev_avg']))
+	#filter on starting date
+	startdate = '2020-02-15'
+	df_prevalence = df_prevalence.loc[df_prevalence.index > startdate]
+	df_R0 = df_R0.loc[df_R0.index > startdate]
+	df_response = df_response.loc[df_response.index > startdate]
+
 
 	fig, ax1 = plt.subplots()
 	ax2 = ax1.twinx()
+	ax3 = ax1.twinx()
+	ax3.spines['right'].set_position(('axes', 1.12))
 
+	#plot prevalence
 	ln1 = ax1.plot(df_prevalence.index, df_prevalence['prev_avg'], label = 'Prevalence')
 	ax1.fill_between(df_prevalence.index, df_prevalence['prev_low'], df_prevalence['prev_up'], alpha = 0.4)
 
-	ln2 = ax2.plot(df_R0.index, df_R0['Rt_avg'], color = 'maroon', label = r'$R_0$')
+	#plot R
+	ln2 = ax2.plot(df_R0.index, df_R0['Rt_avg'], color = 'maroon', label = r'$R$')
 	ax2.fill_between(df_R0.index, df_R0['Rt_low'], df_R0['Rt_up'], alpha = 0.4, color = 'maroon')
+
+	#also plot government response
+	ln3 = ax3.plot(df_response.index, df_response['StringencyIndex'], label = 'Stringency index', color = 'black')
 
 	ax1.set_ylim(0)
 	ax2.set_ylim(0, 2.6)
+	ax3.set_ylim(0)
 
-	lns = ln1 + ln2
+	lns = ln1 + ln2 + ln3
 	labs = [l.get_label() for l in lns]
 	ax2.legend(lns, labs, loc = 'best')
 
@@ -551,7 +565,8 @@ def plot_prevalence_R():
 	# fig.autofmt_xdate()
 
 	ax1.set_ylabel('Prevalence (estimated active cases per million)')
-	ax2.set_ylabel(r'Basic reproductive number $R_0$')
+	ax2.set_ylabel(r'Reproductive number $R$')
+	ax3.set_ylabel('Oxford Stringency Index')
 
 	ax1.set_title('COVID-19 statistics of the Netherlands')
 
@@ -1291,11 +1306,11 @@ def main():
 
 	# estimate_recent_prevalence()
 
-	# plot_prevalence_R()
+	plot_prevalence_R()
 
 	# plot_mobility()
 
-	plot_daily_results()
+	# plot_daily_results()
 
 	# plot_sewage()
 
