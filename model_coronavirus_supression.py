@@ -635,12 +635,14 @@ def plot_sewage():
 	"""
 	df_sewage = load_sewage_data(smooth = True, shiftdates = True)
 
+	df_sewage = df_sewage.loc[df_sewage.index > '2020-02-05']
+
 	print(df_sewage.tail())
 
 	fig, ax1 = plt.subplots()
 	ax2 = ax1.twinx()
 
-	ln1 = ax1.plot(df_sewage.index, df_sewage.n_measurements, color = 'navy', label = 'Number of measurements', alpha = 0.7)
+	ln1 = ax1.plot(df_sewage.index, df_sewage.n_measurements, color = '#0C83CC', label = 'Number of measurements', alpha = 1)
 
 	ax2.scatter(df_sewage.index, df_sewage.RNA_per_ml, color = 'maroon', label = 'Average RNA abundance', alpha = 0.4, s = 5)
 	ln2 = ax2.plot(df_sewage.index, df_sewage.RNA_per_ml_smooth, color = 'maroon', label = 'Average RNA abundance smoothed')
@@ -1306,15 +1308,17 @@ def main():
 
 	# estimate_recent_prevalence()
 
-	plot_prevalence_R()
+	# plot_prevalence_R()
 
 	# plot_mobility()
 
 	# plot_daily_results()
 
-	# plot_sewage()
+	plot_sewage()
 
 	# plot_hospitalization()
+
+	# stringency_R_correlation()
 
 	'''
 	df_prevalence, df_R0 = load_prevalence_R0_data()
