@@ -809,7 +809,7 @@ def plot_superspreader_events():
 	df_SSE = load_superspreader_events_data()
 
 	#plot distribution of the number of cases
-	if True:
+	if False:
 		fig, ax = plt.subplots()
 
 		bins = np.linspace(np.nanmin(df_SSE['Total Cases']), np.percentile(df_SSE['Total Cases'].astype(float), 99), 100)
@@ -824,6 +824,37 @@ def plot_superspreader_events():
 		ax.set_title('Distribution of number of infections $Z$ at\nsuperspreader events (SSE)')
 
 		plt.savefig(f'{plotloc}SSE/Distribution_number_of_cases_at_SSE.png', dpi = 200, bbox_inches = 'tight')
+		plt.close()
+
+	#plot the occurances of SSEs at different settings
+	if True:
+		unique_settings, settings_count = np.unique(df_SSE['Setting1'].astype(str), return_counts = True)
+		sortloc = np.argsort(settings_count)[::-1]
+		unique_settings = unique_settings[sortloc]
+		settings_count = settings_count[sortloc]
+
+		#select those above 2 cases
+		selection = settings_count > 10
+		unique_settings_sel = unique_settings[selection]
+		settings_count_sel = settings_count[selection]
+
+		fig, ax = plt.subplots()
+
+		bar_x = np.arange(len(settings_count_sel))
+
+		ax.bar(bar_x, settings_count_sel)
+
+		ax.set_xticks(bar_x)
+		ax.set_xticklabels(unique_settings_sel, ha = 'right')
+		ax.xaxis.set_tick_params(rotation = 75, labelsize = 9)
+
+		ax.grid(linestyle = ':', axis = 'y')
+
+		ax.set_ylabel('Number of SSE events')
+
+		ax.set_title('Superspreader events settings (> 10 occurances)')
+
+		plt.savefig(f'{plotloc}SSE/SSE_settings.png', dpi = 200, bbox_inches = 'tight')
 		plt.close()
 
 
