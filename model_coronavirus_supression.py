@@ -973,9 +973,12 @@ def estimate_recent_R():
 	df_mob_R = df_mob_R.join(df_sewage[['RNA_per_ml_smooth']], how = 'outer')
 
 	#select date range
-	mask = (df_mob_R.index > '2020-04-01') & (df_mob_R.index <= '2020-09-18')
+	enddate_train = '2020-10-10'
+	mask = (df_mob_R.index > '2020-04-01') & (df_mob_R.index <= enddate_train)
 	df_train = df_mob_R.loc[mask]
 	df_pred = df_mob_R.loc[df_mob_R.index > '2020-07-01']
+
+	print(f'WARNING: end date for training set is {enddate_train}')
 
 
 	key_names = {
@@ -1304,7 +1307,7 @@ def estimate_recent_prevalence():
 def main():
 	# government_response_results_simple()
 
-	# estimate_recent_R()
+	estimate_recent_R()
 
 	# estimate_recent_prevalence()
 
@@ -1314,7 +1317,7 @@ def main():
 
 	# plot_daily_results()
 
-	plot_sewage()
+	# plot_sewage()
 
 	# plot_hospitalization()
 
