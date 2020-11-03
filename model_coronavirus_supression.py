@@ -452,6 +452,40 @@ def load_IC_data():
 
 	return df_IC
 
+def load_superspreader_events_data():
+	"""
+	Load data from https://docs.google.com/spreadsheets/d/1c9jwMyT1lw2P0d6SDTno6nHLGMtpheO9xJyGHgdBoco/edit#gid=1812932356
+
+	Description:
+	https://kmswinkels.medium.com/covid-19-superspreading-events-database-4c0a7aa2342b
+	"""
+
+	fname = f'{dataloc}SARS-CoV-2 Superspreading Events from Around the World - SARS-CoV-2 Superspreading Events.csv'
+
+	load_cols = [
+	'Setting1',
+	'Indoor / Outdoor',
+	'Total Cases',
+	'Index Cases',
+	'Secondary Cases',
+	'Total Pop at Event',
+	'Tertiary Cases',
+	'Index Date (Day-Month)'
+	]
+
+	df_SSE = pd.read_csv(fname, usecols = load_cols)
+	df_SSE = df_SSE.rename(columns = {'Index Date (Day-Month)': 'Index Date'})
+
+	df_SSE['Index Date'] = pd.to_datetime(df_SSE['Index Date'])
+	df_SSE.set_index('Index Date', inplace = True)
+
+	#filter out all occurances where the 'Total Cases' column is filled with a string
+	#instead of a number
+	df_SSE = df_SSE.loc[df_SSE['Total Cases'].str.isnumeric()]
+	#now convert to int
+	df_SSE['Total Cases'] = df_SSE['Total Cases'].astype(int)
+
+	return df_SSE
 
 def average_kernel(size = 7):
 	return np.ones(size)/size
@@ -770,6 +804,27 @@ def plot_hospitalization():
 
 	plt.savefig(f'{plotloc}Hospital_IC_change.png', dpi = 200, bbox_inches = 'tight')
 	plt.close()
+
+def plot_superspreader_events():
+	df_SSE = load_superspreader_events_data()
+
+	#plot distribution of the number of cases
+	if True:
+		fig, ax = plt.subplots()
+
+		bins = np.linspace(np.nanmin(df_SSE['Total Cases']), np.percentile(df_SSE['Total Cases'].astype(float), 99), 100)
+
+		ax.hist(df_SSE['Total Cases'], bins = bins)
+
+		ax.grid(linestyle = ':')
+
+		ax.set_xlabel('Number of infections $Z$')
+		ax.set_ylabel('Number of SSE events')
+
+		ax.set_title('Distribution of number of infections $Z$ at\nsuperspreader events (SSE)')
+
+		plt.savefig(f'{plotloc}SSE/Distribution_number_of_cases_at_SSE.png', dpi = 200, bbox_inches = 'tight')
+		plt.close()
 
 
 def government_response_results_simple():
@@ -1307,7 +1362,9 @@ def estimate_recent_prevalence():
 def main():
 	# government_response_results_simple()
 
-	estimate_recent_R()
+	plot_superspreader_events()
+
+	# estimate_recent_R()
 
 	# estimate_recent_prevalence()
 

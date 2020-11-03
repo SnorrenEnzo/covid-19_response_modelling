@@ -23,6 +23,8 @@ Predictions: [link](https://covid19.healthdata.org/netherlands)
 
 NICE intensive care data: [link](https://www.databronnencovid19.nl/Bron?naam=Nationale-Intensive-Care-Evaluatie)
 
+Superspreader event database: [article](https://kmswinkels.medium.com/covid-19-superspreading-events-database-4c0a7aa2342b), [Google docs database](https://docs.google.com/spreadsheets/d/1c9jwMyT1lw2P0d6SDTno6nHLGMtpheO9xJyGHgdBoco/edit#gid=1812932356)
+
 #### Possible early predictors (for prevalence and R)
 
 Mobility data:
@@ -76,6 +78,10 @@ Mortality rate 1/mu
 [covid-analytics.nl](https://covid-analytics.nl/population.html): the general test positivity rate graphs etc, but also detailed and complete information on hospital bed/ICU usage and up to date capacity.
 
 [CoronaWatchNL](https://github.com/Sikerdebaard/CoronaWatchNL)
+
+### Literature
+
+Fat-tailed superspreader events: [link](https://www.pnas.org/node/958545.full)
 
 ### Modelling background information
 
