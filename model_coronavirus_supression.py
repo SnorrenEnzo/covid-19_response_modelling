@@ -484,6 +484,13 @@ def load_superspreader_events_data():
 	df_SSE = df_SSE.loc[df_SSE['Total Cases'].str.isnumeric()]
 	#now convert to int
 	df_SSE['Total Cases'] = df_SSE['Total Cases'].astype(int)
+	df_SSE['Setting1'] = df_SSE['Setting1'].astype(str)
+	df_SSE['Indoor / Outdoor'] = df_SSE['Indoor / Outdoor'].astype(str)
+
+	#filter out unknowns
+	# df_SSE.loc[df_SSE['Indoor / Outdoor'] == 'nan']['Indoor / Outdoor'] = 'Unknown'
+	# df_SSE.loc[df_SSE['Indoor / Outdoor'] == 'unknown']['Indoor / Outdoor'] = 'Unknown'
+	# df_SSE = df_SSE.set_value(df_SSE.index[(df_SSE['Indoor / Outdoor'] == 'nan') | (df_SSE['Indoor / Outdoor'] == 'unknown')], 'Indoor / Outdoor', 'Unknown')
 
 	return df_SSE
 
@@ -826,12 +833,14 @@ def plot_superspreader_events():
 		plt.savefig(f'{plotloc}SSE/Distribution_number_of_cases_at_SSE.png', dpi = 200, bbox_inches = 'tight')
 		plt.close()
 
-	#plot the occurances of SSEs at different settings
-	if True:
-		unique_settings, settings_count = np.unique(df_SSE['Setting1'].astype(str), return_counts = True)
+	#plot the occurences of SSEs at different settings
+	if False:
+		unique_settings, settings_count = np.unique(df_SSE['Setting1'], return_counts = True)
 		sortloc = np.argsort(settings_count)[::-1]
 		unique_settings = unique_settings[sortloc]
 		settings_count = settings_count[sortloc]
+
+		unique_settings[np.where(unique_settings == 'nan')[0][0]] = 'Unknown'
 
 		#select those above 2 cases
 		selection = settings_count > 10
@@ -852,10 +861,37 @@ def plot_superspreader_events():
 
 		ax.set_ylabel('Number of SSE events')
 
-		ax.set_title('Superspreader events settings (> 10 occurances)')
+		ax.set_title('Superspreader events settings (> 10 occurences)')
 
 		plt.savefig(f'{plotloc}SSE/SSE_settings.png', dpi = 200, bbox_inches = 'tight')
 		plt.close()
+
+	#get statistics on indoor/outdoor
+	if True:
+		unique_inout, inout_count = np.unique(df_SSE['Indoor / Outdoor'], return_counts = True)
+
+		total_SSE = len(df_SSE)
+
+		#replace unknown values
+		nanloc = np.where(unique_inout == 'nan')[0]
+		unknownloc = np.where(unique_inout == 'unknown')[0]
+		Unknownloc = np.where(unique_inout == 'Unknown')[0][0]
+
+
+		dellocs = list(nanloc) + list(unknownloc)
+		if len(dellocs) > 0:
+			if len(nanloc) > 0:
+				inout_count[Unknownloc] += inout_count[nanloc[0]]
+			if len(unknownloc) > 0:
+				inout_count[Unknownloc] += inout_count[unknownloc[0]]
+
+			unique_inout = np.delete(unique_inout, dellocs)
+			inout_count = np.delete(inout_count, dellocs)
+
+		# unique_settings[] = 'Unknown'
+
+		for i in range(len(unique_inout)):
+			print(f'{unique_inout[i]}: {inout_count[i]*100/total_SSE:0.01f}% ({inout_count[i]})')
 
 
 def government_response_results_simple():
