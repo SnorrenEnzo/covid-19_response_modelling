@@ -360,7 +360,10 @@ def load_sewage_data(smooth = False, windowsize = 3, shiftdates = False):
 
 	downloadSave(sewage_url, sewage_fname, check_file_exists = True)
 
-	df_sewage = pd.read_csv(sewage_fname, usecols = ['Date_measurement', 'Security_region_name', 'Percentage_in_security_region', 'RNA_per_ml', 'Representative_measurement'])
+	df_sewage = pd.read_csv(sewage_fname, usecols = ['Date_measurement', 'Security_region_name', 'Percentage_in_security_region', 'RNA_flow_per_100.000', 'Representative_measurement'])
+
+	#shift RNA units to "* 100 billion"
+	df_sewage['RNA_flow_per_100.000'] /= 100e9
 
 	#only take "representative measurements" which span 24 hours instead of a single moment
 	df_sewage = df_sewage.loc[df_sewage['Representative_measurement']]
@@ -377,10 +380,10 @@ def load_sewage_data(smooth = False, windowsize = 3, shiftdates = False):
 	#add column indicating number of measurements
 	df_sewage['n_measurements'] = np.ones(len(df_sewage), dtype = int)
 
-	df_temp = df_sewage.groupby(['Security_region_name']).agg({'RNA_per_ml': 'median', 'n_measurements': 'sum'})
+	# df_temp = df_sewage.groupby(['Security_region_name']).agg({'RNA_per_ml': 'median', 'n_measurements': 'sum'})
 
 	#aggregate over the dates
-	df_sewage = df_sewage.groupby(['Date']).agg({'RNA_per_ml': 'median', 'n_measurements': 'sum'})
+	df_sewage = df_sewage.groupby(['Date']).agg({'RNA_flow_per_100.000': 'median', 'n_measurements': 'sum'})
 
 	if shiftdates:
 		#rough average peak of virus shedding
@@ -390,7 +393,7 @@ def load_sewage_data(smooth = False, windowsize = 3, shiftdates = False):
 
 	#smooth data if desired
 	if smooth:
-		df_sewage['RNA_per_ml_smooth'] = df_sewage['RNA_per_ml'].rolling(windowsize).mean()
+		df_sewage['RNA_flow_smooth'] = df_sewage['RNA_flow_per_100.000'].rolling(windowsize).mean()
 
 	return df_sewage
 
@@ -685,8 +688,8 @@ def plot_sewage():
 
 	ln1 = ax1.plot(df_sewage.index, df_sewage.n_measurements, color = '#0C83CC', label = 'Number of measurements', alpha = 1)
 
-	ax2.scatter(df_sewage.index, df_sewage.RNA_per_ml, color = 'maroon', label = 'Average RNA abundance', alpha = 0.4, s = 5)
-	ln2 = ax2.plot(df_sewage.index, df_sewage.RNA_per_ml_smooth, color = 'maroon', label = 'Average RNA abundance smoothed')
+	ax2.scatter(df_sewage.index, df_sewage['RNA_flow_per_100.000'], color = 'maroon', label = 'Average RNA abundance', alpha = 0.4, s = 5)
+	ln2 = ax2.plot(df_sewage.index, df_sewage['RNA_flow_smooth'], color = 'maroon', label = 'Average RNA abundance smoothed')
 
 	ax1.xaxis.set_tick_params(rotation = 45)
 
@@ -695,7 +698,7 @@ def plot_sewage():
 	ax2.legend(lns, labs, loc = 'best')
 
 	ax1.set_ylabel('Number of measurements')
-	ax2.set_ylabel('Number of RNA fragments per mL')
+	ax2.set_ylabel('Number of RNA fragments per 100.000\ninhabitants' + r' ($\times 100 \cdot 10^9$)')
 
 	ax1.grid(linestyle = ':', axis = 'x')
 	ax2.grid(linestyle = ':', axis = 'y')
@@ -1282,7 +1285,7 @@ def estimate_recent_prevalence():
 	df_daily_covid['Total_per_million'] = df_daily_covid['Total_reported'] * per_million_factor
 
 	#merge testing and sewage data
-	df_predictors = df_daily_covid.merge(df_sewage[['RNA_per_ml_smooth']], right_index = True, left_index = True)
+	df_predictors = df_daily_covid.merge(df_sewage[['RNA_flow_smooth']], right_index = True, left_index = True)
 	# df_predictors = df_predictors.merge(df_n_tests[['Number_of_tests']], right_index = True, left_index = True)
 
 	#determine test positivity ratio
@@ -1290,26 +1293,25 @@ def estimate_recent_prevalence():
 
 	#select second wave of infections with the high test rate, but stop at the
 	#section where the prevalence flattens (seems unrealistic)
-	startdate = '2020-08-01'
-	enddate = '2020-10-08'
+	#need to select after 2020-09-06 because that's when the sewage measurements change to per 100.000
+	startdate = '2020-09-08'
+	enddate = '2020-10-20'
 	df_predictors_sel = df_predictors.loc[(df_predictors.index > startdate) & (df_predictors.index < enddate)]
 	df_prevalence_sel = df_prevalence.loc[(df_prevalence.index > startdate) & (df_prevalence.index < enddate)]
 
-	print(df_predictors)
-
 
 	#discard days with too low number of positive tests per million for determining the correlation
-	test_pos_threshold = 40
+	# test_pos_threshold = 40
 
 	# startdate_for_cor = np.argmax(df_predictors_sel['Total_per_million'] > test_pos_threshold)
-	startdate_for_cor = '2020-08-10'
+	startdate_for_cor = '2020-09-08'
 	#datasets for determining correlation
 	df_predictors_cor = df_predictors_sel.loc[df_predictors_sel.index > startdate_for_cor]
 	df_prevalence_cor = df_prevalence_sel.loc[df_prevalence_sel.index > startdate_for_cor]
 
 	parameters_used = [
 	'Positivity_ratio',
-	'RNA_per_ml_smooth'
+	'RNA_flow_smooth'
 	]
 
 	'''
@@ -1377,20 +1379,20 @@ def estimate_recent_prevalence():
 
 	### Now make predictions for the most recent data
 	#select the positive test data
-	df_predictors_pred = df_predictors.loc[df_predictors.index > enddate]
+	df_predictors_pred = df_predictors.loc[df_predictors.index > startdate_for_cor]
 	#get data in sklearn shape
 	Xpred = dataframes_to_NDarray(df_predictors_pred, parameters_used)
 	#make the predictions
 	# df_predictors_pred['Prev_pred'] = linear_model(df_daily_covid_pred['Total_per_million'], *popt)
 	df_predictors_pred['Prev_pred'] = clf.predict(Xpred)
 
-	print(df_predictors_pred.tail())
-
-	#append the last data point from the real data
 	df_prevalence_pred = df_predictors_pred[['Prev_pred']]
+	#append the last data point from the real data
+	'''
 	df_prevalence_pred = df_prevalence_pred.append(df_prevalence_sel.iloc[-1:][['prev_avg']].rename(columns = {'prev_avg': 'Prev_pred'}))
 	#then sort again
 	df_prevalence_pred = df_prevalence_pred.sort_index()
+	'''
 
 
 	###now plot together with the old data
@@ -1429,11 +1431,11 @@ def estimate_recent_prevalence():
 def main():
 	# government_response_results_simple()
 
-	plot_superspreader_events()
+	# plot_superspreader_events()
 
 	# estimate_recent_R()
 
-	# estimate_recent_prevalence()
+	estimate_recent_prevalence()
 
 	# plot_prevalence_R()
 
@@ -1446,20 +1448,6 @@ def main():
 	# plot_hospitalization()
 
 	# stringency_R_correlation()
-
-	'''
-	df_prevalence, df_R0 = load_prevalence_R0_data()
-	df_deaths = load_deathdata()
-
-	### determine mortality rate per unit time mu
-	### mu = 1/I dD/dt
-	mu_mean = get_mean_mu(df_prevalence, df_deaths) #days^-1
-
-	### set other model parameters
-	# period of being not contagious
-	a = 1/8.3 #days^-1
-	#
-	'''
 
 
 if __name__ == '__main__':
