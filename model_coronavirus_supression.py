@@ -30,6 +30,9 @@ serial_interval = 5
 #number of days between infection and recovery
 time_till_recovery = 14
 
+betterblue = '#4A7AE0'
+betterorange = '#C75310'
+
 def downloadSave(url, file_name, check_file_exists = False):
 	"""
 	Return True when a new file is downloaded
@@ -1095,7 +1098,7 @@ def estimate_recent_R():
 	# df_mob_R = df_google_mob.merge(df_R, right_index = True, left_index = True)
 	df_mob_R = df_google_mob.join(df_R, how = 'outer')
 	df_mob_R = df_mob_R.join(df_apple_mob, how = 'inner')
-	df_mob_R = df_mob_R.join(df_sewage[['RNA_per_ml_smooth']], how = 'outer')
+	df_mob_R = df_mob_R.join(df_sewage[['RNA_flow_smooth']], how = 'outer')
 
 	#select date range
 	enddate_train = '2020-10-10'
@@ -1112,7 +1115,7 @@ def estimate_recent_R():
 	'transit_stations_smooth': 'Transit stations',
 	'workplaces_smooth': 'Workplaces',
 	'residential_smooth': 'Residential',
-	'RNA_per_ml_smooth': 'RNA per ml',
+	'RNA_flow_smooth': 'RNA flow smooth',
 	'driving_smooth': 'Driving',
 	'walking_smooth': 'Walking',
 	'transit_smooth': 'Transit'
@@ -1230,11 +1233,11 @@ def estimate_recent_R():
 
 		fig, ax = plt.subplots()
 
-		ax.plot(df_pred.index, df_pred.Rt_avg, label = 'Ground truth', color = 'navy')
+		ax.plot(df_pred.index, df_pred.Rt_avg, label = 'Ground truth', color = betterblue)
 		#indicate error margins on ground truth
-		ax.fill_between(df_pred.index, df_pred['Rt_low'], df_pred['Rt_up'], alpha = 0.4, color = 'navy')
+		ax.fill_between(df_pred.index, df_pred['Rt_low'], df_pred['Rt_up'], alpha = 0.4, color = betterblue)
 
-		ax.plot(df_pred.index, Y_pred, label = f'Prediction ($R^2$: {r_squared:0.03f})', color = 'maroon')
+		ax.plot(df_pred.index, Y_pred, label = f'Prediction ($R^2$: {r_squared:0.03f})', color = betterorange)
 
 		ax.grid(linestyle = ':')
 		ax.legend(loc = 'best')
@@ -1399,12 +1402,12 @@ def estimate_recent_prevalence():
 	fig, ax = plt.subplots()
 
 	#old data
-	ax.plot(df_prevalence_sel.index, df_prevalence_sel['prev_avg'], label = 'Measurements', color = 'royalblue')
+	ax.plot(df_prevalence_sel.index, df_prevalence_sel['prev_avg'], label = 'Measurements', color = betterblue)
 	#show error bars
-	ax.fill_between(df_prevalence_sel.index, df_prevalence_sel['prev_low'], df_prevalence_sel['prev_up'], alpha = 0.4, color = 'royalblue')
+	ax.fill_between(df_prevalence_sel.index, df_prevalence_sel['prev_low'], df_prevalence_sel['prev_up'], alpha = 0.4, color = betterblue)
 
 	#predictions
-	ax.plot(df_prevalence_pred.index, df_prevalence_pred['Prev_pred'], label = f'Linear prediction ($R^2 = {r_squared:0.03f}$)', color = 'maroon')
+	ax.plot(df_prevalence_pred.index, df_prevalence_pred['Prev_pred'], label = f'Linear prediction ($R^2 = {r_squared:0.03f}$)', color = betterorange)
 
 	ax.grid(linestyle = ':')
 
@@ -1412,7 +1415,7 @@ def estimate_recent_prevalence():
 
 	ax.set_title('COVID-19 estimated active cases in the Netherlands\nwith prediction of recent days')
 
-	ax.legend(loc = 'best')
+	ax.legend(loc = 'lower right')
 
 	# ax.xaxis.set_tick_params(rotation = 45)
 	# ax.xaxis.set_major_locator(mdates.AutoDateLocator(minticks = 3, maxticks = 6))
