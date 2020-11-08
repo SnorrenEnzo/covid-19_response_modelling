@@ -7,10 +7,12 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
 import urllib.request
+from urllib.error import HTTPError
 import shutil
 import os, sys, glob
 from zipfile import ZipFile
 
+import datetime as dt
 
 from sklearn.linear_model import Ridge, LinearRegression, Lasso
 from sklearn.ensemble import AdaBoostRegressor, RandomForestRegressor
@@ -208,8 +210,31 @@ def load_mobility_data(smooth = False, smoothsize = 7):
 
 
 	### now load the apple data
-	apple_part_fname = f'{dataloc}applemobilitytrends*.csv'
-	apple_mob_fname = glob.glob(apple_part_fname)[0]
+	#the url changes to the most recent date of availability, so we need to scan
+	#several urls of the past few days
+	apple_mobility_url_base = 'https://covid19-static.cdn-apple.com/covid19-mobility-data/2019HotfixDev32/v3/en-us/applemobilitytrends-'
+
+	today = dt.datetime.now().date()
+	apple_mob_fname = f'{dataloc}applemobilitytrends-'
+	#make the possible urls, starting with the most recent date
+	for minday in range(5):
+		possible_date = today - dt.timedelta(days = minday)
+		apple_mob_possible_url = f'{apple_mobility_url_base}{possible_date}.csv'
+
+		try:
+			downloadSave(apple_mob_possible_url, apple_mob_fname + f'{possible_date}.csv', check_file_exists = True)
+
+			print(f'{possible_date} correct!')
+
+			apple_mob_fname += f'{possible_date}.csv'
+			break
+		except HTTPError:
+			print(f'{possible_date} no data found')
+
+
+	#load any apple mobility file
+	# apple_part_fname = f'{dataloc}applemobilitytrends*.csv'
+	# apple_mob_fname = glob.glob(apple_part_fname)[0]
 
 	df_apple_mob = pd.read_csv(apple_mob_fname)
 	#find the driving, walking & transit rows of the netherlands
@@ -363,10 +388,10 @@ def load_sewage_data(smooth = False, windowsize = 3, shiftdates = False):
 
 	downloadSave(sewage_url, sewage_fname, check_file_exists = True)
 
-	df_sewage = pd.read_csv(sewage_fname, usecols = ['Date_measurement', 'Security_region_name', 'Percentage_in_security_region', 'RNA_flow_per_100.000', 'Representative_measurement'])
+	df_sewage = pd.read_csv(sewage_fname, usecols = ['Date_measurement', 'Security_region_name', 'Percentage_in_security_region', 'RNA_flow_per_100000', 'Representative_measurement'])
 
 	#shift RNA units to "* 100 billion"
-	df_sewage['RNA_flow_per_100.000'] /= 100e9
+	df_sewage['RNA_flow_per_100000'] /= 100e9
 
 	#only take "representative measurements" which span 24 hours instead of a single moment
 	df_sewage = df_sewage.loc[df_sewage['Representative_measurement']]
@@ -386,7 +411,7 @@ def load_sewage_data(smooth = False, windowsize = 3, shiftdates = False):
 	# df_temp = df_sewage.groupby(['Security_region_name']).agg({'RNA_per_ml': 'median', 'n_measurements': 'sum'})
 
 	#aggregate over the dates
-	df_sewage = df_sewage.groupby(['Date']).agg({'RNA_flow_per_100.000': 'median', 'n_measurements': 'sum'})
+	df_sewage = df_sewage.groupby(['Date']).agg({'RNA_flow_per_100000': 'median', 'n_measurements': 'sum'})
 
 	if shiftdates:
 		#rough average peak of virus shedding
@@ -396,7 +421,7 @@ def load_sewage_data(smooth = False, windowsize = 3, shiftdates = False):
 
 	#smooth data if desired
 	if smooth:
-		df_sewage['RNA_flow_smooth'] = df_sewage['RNA_flow_per_100.000'].rolling(windowsize).mean()
+		df_sewage['RNA_flow_smooth'] = df_sewage['RNA_flow_per_100000'].rolling(windowsize).mean()
 
 	return df_sewage
 
@@ -499,6 +524,7 @@ def load_superspreader_events_data():
 	# df_SSE = df_SSE.set_value(df_SSE.index[(df_SSE['Indoor / Outdoor'] == 'nan') | (df_SSE['Indoor / Outdoor'] == 'unknown')], 'Indoor / Outdoor', 'Unknown')
 
 	return df_SSE
+
 
 def average_kernel(size = 7):
 	return np.ones(size)/size
@@ -691,7 +717,7 @@ def plot_sewage():
 
 	ln1 = ax1.plot(df_sewage.index, df_sewage.n_measurements, color = '#0C83CC', label = 'Number of measurements', alpha = 1)
 
-	ax2.scatter(df_sewage.index, df_sewage['RNA_flow_per_100.000'], color = 'maroon', label = 'Average RNA abundance', alpha = 0.4, s = 5)
+	ax2.scatter(df_sewage.index, df_sewage['RNA_flow_per_100000'], color = 'maroon', label = 'Average RNA abundance', alpha = 0.4, s = 5)
 	ln2 = ax2.plot(df_sewage.index, df_sewage['RNA_flow_smooth'], color = 'maroon', label = 'Average RNA abundance smoothed')
 
 	ax1.xaxis.set_tick_params(rotation = 45)
@@ -701,7 +727,7 @@ def plot_sewage():
 	ax2.legend(lns, labs, loc = 'best')
 
 	ax1.set_ylabel('Number of measurements')
-	ax2.set_ylabel('Number of RNA fragments per 100.000\ninhabitants' + r' ($\times 100 \cdot 10^9$)')
+	ax2.set_ylabel('Number of RNA fragments per 100 000\ninhabitants' + r' ($\times 100 \cdot 10^9$)')
 
 	ax1.grid(linestyle = ':', axis = 'x')
 	ax2.grid(linestyle = ':', axis = 'y')
@@ -1438,11 +1464,11 @@ def main():
 
 	# estimate_recent_R()
 
-	estimate_recent_prevalence()
+	# estimate_recent_prevalence()
 
 	# plot_prevalence_R()
 
-	# plot_mobility()
+	plot_mobility()
 
 	# plot_daily_results()
 
