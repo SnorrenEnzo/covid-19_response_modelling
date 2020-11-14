@@ -12,7 +12,7 @@ Reproductive number: [link](https://data.rivm.nl/covid-19/COVID-19_reproductiege
 
 More raw data: [link](https://coronadashboard.rijksoverheid.nl/verantwoording)
 
-Weekly update [link](https://www.rivm.nl/documenten/wekelijkse-update-epidemiologische-situatie-covid-19-in-nederland) with:
+Weekly update [link](https://www.rivm.nl/coronavirus-covid-19/actueel) with:
 - Number of tests performed per week
 - Infection context, like at home, at work, pub etc.
 

@@ -212,12 +212,12 @@ def load_mobility_data(smooth = False, smoothsize = 7):
 	### now load the apple data
 	#the url changes to the most recent date of availability, so we need to scan
 	#several urls of the past few days
-	apple_mobility_url_base = 'https://covid19-static.cdn-apple.com/covid19-mobility-data/2019HotfixDev32/v3/en-us/applemobilitytrends-'
+	apple_mobility_url_base = 'https://covid19-static.cdn-apple.com/covid19-mobility-data/2019HotfixDev35/v3/en-us/applemobilitytrends-'
 
 	today = dt.datetime.now().date()
 	apple_mob_fname = f'{dataloc}applemobilitytrends-'
 	#make the possible urls, starting with the most recent date
-	for minday in range(5):
+	for minday in range(8):
 		possible_date = today - dt.timedelta(days = minday)
 		apple_mob_possible_url = f'{apple_mobility_url_base}{possible_date}.csv'
 
@@ -1324,7 +1324,7 @@ def estimate_recent_prevalence():
 	#section where the prevalence flattens (seems unrealistic)
 	#need to select after 2020-09-06 because that's when the sewage measurements change to per 100.000
 	startdate = '2020-09-08'
-	enddate = '2020-10-20'
+	enddate = '2020-10-25'
 	df_predictors_sel = df_predictors.loc[(df_predictors.index > startdate) & (df_predictors.index < enddate)]
 	df_prevalence_sel = df_prevalence.loc[(df_prevalence.index > startdate) & (df_prevalence.index < enddate)]
 
@@ -1462,13 +1462,13 @@ def main():
 
 	# plot_superspreader_events()
 
-	# estimate_recent_R()
+	estimate_recent_R()
 
-	# estimate_recent_prevalence()
+	estimate_recent_prevalence()
 
 	# plot_prevalence_R()
 
-	plot_mobility()
+	# plot_mobility()
 
 	# plot_daily_results()
 
