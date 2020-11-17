@@ -212,7 +212,7 @@ def load_mobility_data(smooth = False, smoothsize = 7):
 	### now load the apple data
 	#the url changes to the most recent date of availability, so we need to scan
 	#several urls of the past few days
-	apple_mobility_url_base = 'https://covid19-static.cdn-apple.com/covid19-mobility-data/2019HotfixDev35/v3/en-us/applemobilitytrends-'
+	apple_mobility_url_base = 'https://covid19-static.cdn-apple.com/covid19-mobility-data/2021HotfixDev11/v3/en-us/applemobilitytrends-'
 
 	today = dt.datetime.now().date()
 	apple_mob_fname = f'{dataloc}applemobilitytrends-'
@@ -1127,12 +1127,12 @@ def estimate_recent_R():
 	df_mob_R = df_mob_R.join(df_sewage[['RNA_flow_smooth']], how = 'outer')
 
 	#select date range
-	enddate_train = '2020-10-10'
+	enddate_train = '2020-10-25'
 	mask = (df_mob_R.index > '2020-04-01') & (df_mob_R.index <= enddate_train)
 	df_train = df_mob_R.loc[mask]
 	df_pred = df_mob_R.loc[df_mob_R.index > '2020-07-01']
 
-	print(f'WARNING: end date for training set is {enddate_train}')
+	print(f'WARNING: end date for R training set is {enddate_train}')
 
 
 	key_names = {
@@ -1324,9 +1324,11 @@ def estimate_recent_prevalence():
 	#section where the prevalence flattens (seems unrealistic)
 	#need to select after 2020-09-06 because that's when the sewage measurements change to per 100.000
 	startdate = '2020-09-08'
-	enddate = '2020-10-25'
+	enddate = '2020-11-01'
 	df_predictors_sel = df_predictors.loc[(df_predictors.index > startdate) & (df_predictors.index < enddate)]
 	df_prevalence_sel = df_prevalence.loc[(df_prevalence.index > startdate) & (df_prevalence.index < enddate)]
+
+	print(f'WARNING: end date for prevalence training set is {enddate}')
 
 
 	#discard days with too low number of positive tests per million for determining the correlation
