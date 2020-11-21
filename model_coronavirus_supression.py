@@ -34,6 +34,7 @@ time_till_recovery = 14
 
 betterblue = '#016FB9'
 betterorange = '#F17105'
+betterblack = '#141414'
 
 def downloadSave(url, file_name, check_file_exists = False):
 	"""
@@ -212,23 +213,27 @@ def load_mobility_data(smooth = False, smoothsize = 7, apple_mobility_url_base =
 	### now load the apple data
 	#the url changes to the most recent date of availability, so we need to scan
 	#several urls of the past few days
-	today = dt.datetime.now().date()
-	apple_mob_fname = f'{dataloc}applemobilitytrends-'
-	#make the possible urls, starting with the most recent date
-	for minday in range(8):
-		possible_date = today - dt.timedelta(days = minday)
-		apple_mob_possible_url = f'{apple_mobility_url_base}{possible_date}.csv'
+	possible_apple_data_files = glob.glob(f'{dataloc}applemobilitytrends-*.csv')
+	if len(possible_apple_data_files) == 0:
 
-		try:
-			downloadSave(apple_mob_possible_url, apple_mob_fname + f'{possible_date}.csv', check_file_exists = True)
+		today = dt.datetime.now().date()
+		apple_mob_fname = f'{dataloc}applemobilitytrends-'
+		#make the possible urls, starting with the most recent date
+		for minday in range(8):
+			possible_date = today - dt.timedelta(days = minday)
+			apple_mob_possible_url = f'{apple_mobility_url_base}{possible_date}.csv'
 
-			print(f'{possible_date} correct!')
+			try:
+				downloadSave(apple_mob_possible_url, apple_mob_fname + f'{possible_date}.csv', check_file_exists = True)
 
-			apple_mob_fname += f'{possible_date}.csv'
-			break
-		except HTTPError:
-			print(f'{possible_date} no data found')
+				print(f'{possible_date} correct!')
 
+				apple_mob_fname += f'{possible_date}.csv'
+				break
+			except HTTPError:
+				print(f'{possible_date} no data found')
+	else:
+		apple_mob_fname = possible_apple_data_files[0]
 
 	#load any apple mobility file
 	# apple_part_fname = f'{dataloc}applemobilitytrends*.csv'
@@ -618,7 +623,7 @@ def plot_prevalence_R():
 	ax2.fill_between(df_R0.index, df_R0['Rt_low'], df_R0['Rt_up'], alpha = 0.4, color = 'maroon')
 
 	#also plot government response
-	ln3 = ax3.plot(df_response.index, df_response['StringencyIndex'], label = 'Stringency index', color = 'black')
+	ln3 = ax3.plot(df_response.index, df_response['StringencyIndex'], label = 'Stringency index', color = betterblack)
 
 	ax1.set_ylim(0)
 	ax2.set_ylim(0, 2.6)
@@ -1114,11 +1119,18 @@ def estimate_recent_R(enddate_train = '2020-10-25'):
 	"""
 	Estimate the reproductive number R with mobility data
 	"""
-
 	print(f'WARNING: end date for R training set is {enddate_train}')
+
+	startdate_pred = '2020-07-01'
+
 	df_prevalence, df_R = load_prevalence_R0_data()
 	df_google_mob, df_apple_mob = load_mobility_data(smooth = True)
 	df_sewage = load_sewage_data(smooth = True, shiftdates = True)
+
+	#for the plot as a reference
+	df_response = load_government_response_data()
+
+	df_response = df_response.loc[df_response.index > startdate_pred]
 
 	#determine error of R
 	df_R['Rt_abs_error'] = ((df_R['Rt_low'] - df_R['Rt_avg']).abs() + (df_R['Rt_up'] - df_R['Rt_avg']).abs())/2
@@ -1132,7 +1144,7 @@ def estimate_recent_R(enddate_train = '2020-10-25'):
 	#select date range
 	mask = (df_mob_R.index > '2020-04-01') & (df_mob_R.index <= enddate_train)
 	df_train = df_mob_R.loc[mask]
-	df_pred = df_mob_R.loc[df_mob_R.index > '2020-07-01']
+	df_pred = df_mob_R.loc[df_mob_R.index > startdate_pred]
 
 
 
@@ -1258,30 +1270,42 @@ def estimate_recent_R(enddate_train = '2020-10-25'):
 		Y_pred = clf.predict(X_pred)
 
 
-		fig, ax = plt.subplots()
+		fig, ax1 = plt.subplots()
 
-		ax.plot(df_pred.index, df_pred.Rt_avg, label = 'Ground truth', color = betterblue)
+		ax2 = ax1.twinx()
+
+		ln1 = ax1.plot(df_pred.index, df_pred.Rt_avg, label = 'Ground truth', color = betterblue)
 		#indicate error margins on ground truth
-		ax.fill_between(df_pred.index, df_pred['Rt_low'], df_pred['Rt_up'], alpha = 0.4, color = betterblue)
+		ax1.fill_between(df_pred.index, df_pred['Rt_low'], df_pred['Rt_up'], alpha = 0.4, color = betterblue)
 
-		ax.plot(df_pred.index, Y_pred, label = f'Prediction ($R^2$: {r_squared:0.03f})', color = betterorange)
+		ln2 = ax1.plot(df_pred.index, Y_pred, label = f'Prediction ($R^2$: {r_squared:0.03f})', color = betterorange)
 
-		ax.grid(linestyle = ':')
-		ax.legend(loc = 'best')
+		#also plot government response
+		ln3 = ax2.plot(df_response.index, df_response['StringencyIndex'], label = 'Stringency index', color = betterblack)
 
-		ax.set_ylabel('$R$')
-		ax.set_title('$R$ prediction')
+		ax1.grid(linestyle = ':')
+		# ax.legend(loc = 'best')
+
+		lns = ln1 + ln2 + ln3
+		labs = [l.get_label() for l in lns]
+		ax1.legend(lns, labs, loc = 'lower left')
+
+		ax1.set_ylabel('$R$')
+		ax2.set_ylabel('Oxford Stringency Index')
+		ax1.set_title('$R$ prediction')
+
+		ax2.set_ylim(0)
 
 		#fix date ticks
-		ax.set_xticks(pd.date_range(np.min(df_pred.index), np.max(df_pred.index + pd.Timedelta(f'7 day')), freq = '2W'))
+		ax1.set_xticks(pd.date_range(np.min(df_pred.index), np.max(df_pred.index + pd.Timedelta(f'7 day')), freq = '2W'))
 		fig.autofmt_xdate()
 		myfmt = mdates.DateFormatter('%d-%m-%Y')
-		ax.xaxis.set_major_formatter(myfmt)
+		ax1.xaxis.set_major_formatter(myfmt)
 
 		plt.savefig(f'{mobplotloc}Mobility_R_prediction.png', dpi = 200, bbox_inches = 'tight')
 		plt.close()
 
-def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 3):
+def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 5):
 	"""
 	Estimate the recent prevalence based on the test positivity ratio
 	"""
@@ -1446,7 +1470,7 @@ def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 3):
 	ln2 = ax1.plot(df_prevalence_pred.index, df_prevalence_pred['Prev_pred'], label = f'Linear prediction ($R^2 = {r_squared:0.03f}$)', color = betterorange)
 
 	#also plot government response
-	ln3 = ax2.plot(df_response.index, df_response['StringencyIndex'], label = 'Stringency index', color = 'black')
+	ln3 = ax2.plot(df_response.index, df_response['StringencyIndex'], label = 'Stringency index', color = betterblack)
 
 	ax1.grid(linestyle = ':')
 
@@ -1479,9 +1503,9 @@ def main():
 
 	# plot_superspreader_events()
 
-	# estimate_recent_R(enddate_train = '2020-10-28')
+	estimate_recent_R(enddate_train = '2020-10-28')
 
-	estimate_recent_prevalence(enddate_train = '2020-11-01')
+	# estimate_recent_prevalence(enddate_train = '2020-11-01')
 
 	# plot_prevalence_R()
 
