@@ -32,8 +32,8 @@ serial_interval = 5
 #number of days between infection and recovery
 time_till_recovery = 14
 
-betterblue = '#4A7AE0'
-betterorange = '#C75310'
+betterblue = '#016FB9'
+betterorange = '#F17105'
 
 def downloadSave(url, file_name, check_file_exists = False):
 	"""
@@ -136,7 +136,7 @@ def load_government_response_data():
 
 	return df_response
 
-def load_mobility_data(smooth = False, smoothsize = 7):
+def load_mobility_data(smooth = False, smoothsize = 7, apple_mobility_url_base = 'https://covid19-static.cdn-apple.com/covid19-mobility-data/2021HotfixDev18/v3/en-us/applemobilitytrends-'):
 	"""
 	Load Apple and Google mobility data. Downloadable from:
 
@@ -212,8 +212,6 @@ def load_mobility_data(smooth = False, smoothsize = 7):
 	### now load the apple data
 	#the url changes to the most recent date of availability, so we need to scan
 	#several urls of the past few days
-	apple_mobility_url_base = 'https://covid19-static.cdn-apple.com/covid19-mobility-data/2021HotfixDev11/v3/en-us/applemobilitytrends-'
-
 	today = dt.datetime.now().date()
 	apple_mob_fname = f'{dataloc}applemobilitytrends-'
 	#make the possible urls, starting with the most recent date
@@ -314,7 +312,7 @@ def load_number_of_tests(enddate = None):
 	Compiled into a .csv by hand
 	"""
 
-	df_n_tests = pd.read_csv(f'{dataloc}tests_per_week.csv', usecols = ['Week_number', 'Number_of_tests'])
+	df_n_tests = pd.read_csv(f'{dataloc}Edit_only/tests_per_week.csv', usecols = ['Week_number', 'Number_of_tests'])
 
 	df_n_tests = df_n_tests.astype({'Week_number': str})
 
@@ -1112,7 +1110,12 @@ def stringency_R_correlation():
 	plt.savefig(f'{plotloc}Stringency_R_correlation.png', dpi = 200, bbox_inches = 'tight')
 	plt.close()
 
-def estimate_recent_R():
+def estimate_recent_R(enddate_train = '2020-10-25'):
+	"""
+	Estimate the reproductive number R with mobility data
+	"""
+
+	print(f'WARNING: end date for R training set is {enddate_train}')
 	df_prevalence, df_R = load_prevalence_R0_data()
 	df_google_mob, df_apple_mob = load_mobility_data(smooth = True)
 	df_sewage = load_sewage_data(smooth = True, shiftdates = True)
@@ -1127,12 +1130,10 @@ def estimate_recent_R():
 	df_mob_R = df_mob_R.join(df_sewage[['RNA_flow_smooth']], how = 'outer')
 
 	#select date range
-	enddate_train = '2020-10-25'
 	mask = (df_mob_R.index > '2020-04-01') & (df_mob_R.index <= enddate_train)
 	df_train = df_mob_R.loc[mask]
 	df_pred = df_mob_R.loc[df_mob_R.index > '2020-07-01']
 
-	print(f'WARNING: end date for R training set is {enddate_train}')
 
 
 	key_names = {
@@ -1280,14 +1281,22 @@ def estimate_recent_R():
 		plt.savefig(f'{mobplotloc}Mobility_R_prediction.png', dpi = 200, bbox_inches = 'tight')
 		plt.close()
 
-def estimate_recent_prevalence():
+def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 3):
 	"""
 	Estimate the recent prevalence based on the test positivity ratio
 	"""
+	print(f'WARNING: end date for prevalence training set is {enddate_train}')
+
+	startdate_train = '2020-09-08'
+
 	df_daily_covid = load_daily_covid(correct_for_delay = False)
 	df_n_tests = load_number_of_tests()
 	df_prevalence, df_R0 = load_prevalence_R0_data()
 	df_sewage = load_sewage_data(smooth = True, shiftdates = False)
+	#for the plot as a reference
+	df_response = load_government_response_data()
+
+	df_response = df_response.loc[df_response.index > startdate_train]
 
 	### correct for the delay between the onset of symptoms and the result of the test
 	#for source of incubation period, see the readme
@@ -1305,6 +1314,13 @@ def estimate_recent_prevalence():
 	#determine test positivity rate
 	df_daily_covid['Positivity_ratio'] = df_daily_covid['Total_reported']/df_daily_covid['Number_of_tests']
 
+	#smooth the testing data, as there are some days with IT problems and underreported
+	#tests, while having overreports the next few days.
+	if smoothsize != None:
+		df_daily_covid['Positivity_ratio_smooth'] = df_daily_covid['Positivity_ratio'].rolling(smoothsize).mean()
+
+		print('Using smoothed positivity data')
+
 	#correct the results to the day of infection
 	df_daily_covid.index = df_daily_covid.index - pd.Timedelta(f'{int(incubation_period + time_to_test_delay)} day')
 
@@ -1315,35 +1331,31 @@ def estimate_recent_prevalence():
 
 	#merge testing and sewage data
 	df_predictors = df_daily_covid.merge(df_sewage[['RNA_flow_smooth']], right_index = True, left_index = True)
-	# df_predictors = df_predictors.merge(df_n_tests[['Number_of_tests']], right_index = True, left_index = True)
-
-	#determine test positivity ratio
-	# df_predictors['Test_pos_ratio'] = df_predictors['Total_reported']/df_predictors['Number_of_tests']
 
 	#select second wave of infections with the high test rate, but stop at the
 	#section where the prevalence flattens (seems unrealistic)
 	#need to select after 2020-09-06 because that's when the sewage measurements change to per 100.000
-	startdate = '2020-09-08'
-	enddate = '2020-11-01'
-	df_predictors_sel = df_predictors.loc[(df_predictors.index > startdate) & (df_predictors.index < enddate)]
-	df_prevalence_sel = df_prevalence.loc[(df_prevalence.index > startdate) & (df_prevalence.index < enddate)]
-
-	print(f'WARNING: end date for prevalence training set is {enddate}')
+	df_predictors_sel = df_predictors.loc[(df_predictors.index > startdate_train) & (df_predictors.index < enddate_train)]
+	df_prevalence_sel = df_prevalence.loc[(df_prevalence.index > startdate_train) & (df_prevalence.index < enddate_train)]
 
 
 	#discard days with too low number of positive tests per million for determining the correlation
 	# test_pos_threshold = 40
 
 	# startdate_for_cor = np.argmax(df_predictors_sel['Total_per_million'] > test_pos_threshold)
-	startdate_for_cor = '2020-09-08'
+	startdate_for_cor = startdate_train
 	#datasets for determining correlation
 	df_predictors_cor = df_predictors_sel.loc[df_predictors_sel.index > startdate_for_cor]
 	df_prevalence_cor = df_prevalence_sel.loc[df_prevalence_sel.index > startdate_for_cor]
 
 	parameters_used = [
-	'Positivity_ratio',
 	'RNA_flow_smooth'
 	]
+
+	if smoothsize != None:
+		parameters_used.append('Positivity_ratio_smooth')
+	else:
+		parameters_used.append('Positivity_ratio')
 
 	'''
 	fig, ax1 = plt.subplots()
@@ -1371,7 +1383,7 @@ def estimate_recent_prevalence():
 
 	r_squared = clf.score(X_train, Y_train, sample_weight = weight_train)
 
-	print(r_squared)
+	print(f'R^2: {r_squared:0.03f}')
 
 
 	### plot accuracy of predictions using the predictions versus ground truth
@@ -1418,43 +1430,46 @@ def estimate_recent_prevalence():
 	df_predictors_pred['Prev_pred'] = clf.predict(Xpred)
 
 	df_prevalence_pred = df_predictors_pred[['Prev_pred']]
-	#append the last data point from the real data
-	'''
-	df_prevalence_pred = df_prevalence_pred.append(df_prevalence_sel.iloc[-1:][['prev_avg']].rename(columns = {'prev_avg': 'Prev_pred'}))
-	#then sort again
-	df_prevalence_pred = df_prevalence_pred.sort_index()
-	'''
 
 
 	###now plot together with the old data
-	fig, ax = plt.subplots()
+	fig, ax1 = plt.subplots()
+
+	ax2 = ax1.twinx()
 
 	#old data
-	ax.plot(df_prevalence_sel.index, df_prevalence_sel['prev_avg'], label = 'Measurements', color = betterblue)
+	ln1 = ax1.plot(df_prevalence_sel.index, df_prevalence_sel['prev_avg'], label = 'Measurements', color = betterblue)
 	#show error bars
-	ax.fill_between(df_prevalence_sel.index, df_prevalence_sel['prev_low'], df_prevalence_sel['prev_up'], alpha = 0.4, color = betterblue)
+	ax1.fill_between(df_prevalence_sel.index, df_prevalence_sel['prev_low'], df_prevalence_sel['prev_up'], alpha = 0.4, color = betterblue)
 
 	#predictions
-	ax.plot(df_prevalence_pred.index, df_prevalence_pred['Prev_pred'], label = f'Linear prediction ($R^2 = {r_squared:0.03f}$)', color = betterorange)
+	ln2 = ax1.plot(df_prevalence_pred.index, df_prevalence_pred['Prev_pred'], label = f'Linear prediction ($R^2 = {r_squared:0.03f}$)', color = betterorange)
 
-	ax.grid(linestyle = ':')
+	#also plot government response
+	ln3 = ax2.plot(df_response.index, df_response['StringencyIndex'], label = 'Stringency index', color = 'black')
 
-	ax.set_ylabel('Prevalence per million')
+	ax1.grid(linestyle = ':')
 
-	ax.set_title('COVID-19 estimated active cases in the Netherlands\nwith prediction of recent days')
+	ax1.set_ylabel('Prevalence per million')
+	ax2.set_ylabel('Oxford Stringency Index')
 
-	ax.legend(loc = 'lower right')
+	ax1.set_title('COVID-19 estimated active cases in the Netherlands\nwith prediction of recent days')
+
+	lns = ln1 + ln2 + ln3
+	labs = [l.get_label() for l in lns]
+	ax1.legend(lns, labs, loc = 'lower right')
 
 	# ax.xaxis.set_tick_params(rotation = 45)
 	# ax.xaxis.set_major_locator(mdates.AutoDateLocator(minticks = 3, maxticks = 6))
 	#set location of date ticks, as the automatic technique does not work
-	ax.set_xticks(pd.date_range(np.min(df_prevalence_sel.index), np.max(df_prevalence_pred.index), freq = 'W'))
+	ax1.set_xticks(pd.date_range(np.min(df_prevalence_sel.index), np.max(df_prevalence_pred.index), freq = 'W'))
 
 	fig.autofmt_xdate()
 	myfmt = mdates.DateFormatter('%d-%m-%Y')
-	ax.xaxis.set_major_formatter(myfmt)
+	ax1.xaxis.set_major_formatter(myfmt)
 
-	ax.set_ylim(0)
+	ax1.set_ylim(0)
+	ax2.set_ylim(0)
 
 	plt.savefig(f'{plotloc}Prevalence_second_wave_with_predictions.png', dpi = 200, bbox_inches = 'tight')
 	plt.close()
@@ -1464,9 +1479,9 @@ def main():
 
 	# plot_superspreader_events()
 
-	estimate_recent_R()
+	# estimate_recent_R(enddate_train = '2020-10-28')
 
-	estimate_recent_prevalence()
+	estimate_recent_prevalence(enddate_train = '2020-11-01')
 
 	# plot_prevalence_R()
 
