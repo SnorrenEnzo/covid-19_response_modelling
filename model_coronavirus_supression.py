@@ -5,6 +5,8 @@ from scipy.optimize import curve_fit
 
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+import matplotlib.colors as mcolors
+import matplotlib.cm as cmx
 
 import urllib.request
 from urllib.error import HTTPError
@@ -1060,40 +1062,76 @@ def plot_individual_data(use_agegroups = True):
 	df_individual = df_individual.loc[df_individual.index >= '2020-08-01']
 
 	if use_agegroups:
-		#convert to an image
-		imgdata = np.array(df_individual).T
+		if True:
+			### Plot as a heatmap
 
-		#vertical labels
-		age_labels = list(df_individual.columns)
+			#convert to an image
+			imgdata = np.array(df_individual).T
 
-		#horizontal label dates
-		x_labeldates = pd.date_range(np.min(df_individual.index), np.max(df_individual.index), freq = '7D', format = '%d-%m-%Y').to_series()
+			#vertical labels
+			age_labels = list(df_individual.columns)
 
-		fig, ax = plt.subplots(figsize = (8, 4))
+			#horizontal label dates
+			x_labeldates = pd.date_range(np.min(df_individual.index), np.max(df_individual.index), freq = '14D', format = '%d-%m-%Y').to_series()
 
-		im = ax.imshow(imgdata*100, cmap = 'Reds', origin = 'lower')
+			fig, ax = plt.subplots(figsize = (8, 4))
 
-		cbar = plt.colorbar(im)
-		cbar.ax.set_ylabel('Percentage of total population')
-		cbar.ax.ticklabel_format(style = 'sci', axis = 'y', scilimits=(0,0))
+			im = ax.imshow(imgdata*100, cmap = 'Reds', origin = 'lower')
 
-		ax.set_aspect(aspect = 6)
+			cbar = plt.colorbar(im)
+			cbar.ax.set_ylabel('Percentage of total population')
+			cbar.ax.ticklabel_format(style = 'sci', axis = 'y', scilimits=(0,0))
 
-		ax.set_yticks(np.arange(10))
-		ax.set_yticklabels(age_labels)
-		ax.set_xticks(np.arange(0, imgdata.shape[1], 7))
-		ax.set_xticklabels(list(x_labeldates.dt.strftime('%d-%m-%Y')))
+			ax.set_aspect(aspect = 6)
 
-		ax.set_ylabel('Age group')
+			ax.set_yticks(np.arange(10))
+			ax.set_yticklabels(age_labels)
+			ax.set_xticks(np.arange(0, imgdata.shape[1], 14))
+			ax.set_xticklabels(list(x_labeldates.dt.strftime('%d-%m-%Y')))
 
-		ax.set_title('Percentage of people per age group tested positive per day')
+			ax.set_xlabel('Date of disease onset')
+			ax.set_ylabel('Age group')
 
-		# ax.xaxis.set_tick_params(rotation = 45)
-		fig.autofmt_xdate()
+			ax.set_title('Percentage of people per age group tested positive per day')
 
-		plt.savefig(f'{plotloc}Individual_testing_data_agegroups.png', dpi = 200, bbox_inches = 'tight')
-		plt.close()
+			# ax.xaxis.set_tick_params(rotation = 45)
+			fig.autofmt_xdate()
 
+			plt.savefig(f'{plotloc}Individual_testing_data_agegroups_heatmap.png', dpi = 200, bbox_inches = 'tight')
+			plt.close()
+
+		if True:
+			smoothscale = 3
+
+			print(df_individual.tail(10))
+
+			fig, ax = plt.subplots()
+
+			cmap = plt.get_cmap('plasma')
+			cNorm  = mcolors.Normalize(vmin = 0, vmax = len(df_individual.columns) - 1)
+			scalarMap = cmx.ScalarMappable(norm = cNorm, cmap = cmap)
+
+			for i, col in enumerate(df_individual.columns):
+				#smooth the data
+				ax.plot(df_individual.index, df_individual[col].rolling(smoothscale).mean(), label = col, color = scalarMap.to_rgba(i))
+
+			ax.legend(loc = 'best', title = 'Age group')
+
+			ax.grid(linestyle = ':')
+
+			#fix the date labels
+			ax.set_xticks(pd.date_range(np.min(df_individual.index), np.max(df_individual.index), freq = '14D', format = '%d-%m-%Y').to_series())
+			fig.autofmt_xdate()
+			myfmt = mdates.DateFormatter('%d-%m-%Y')
+			ax.xaxis.set_major_formatter(myfmt)
+
+			ax.set_xlabel('Date of disease onset')
+			ax.set_ylabel('Percentage of people in age group')
+			ax.set_title('Percentage of people per age group tested positive each day')
+
+
+			plt.savefig(f'{plotloc}Individual_testing_data_agegroups_line.png', dpi = 200, bbox_inches = 'tight')
+			plt.close()
 
 def government_response_results_simple():
 	"""
@@ -1479,7 +1517,8 @@ def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 5):
 
 	startdate_train = '2020-09-08'
 
-	df_daily_covid = load_daily_covid(correct_for_delay = False)
+	df_overall_positive_tests = load_daily_covid(correct_for_delay = False)
+	df_individual = load_individual_positive_test_data(load_agegroups = True)
 	df_n_tests = load_number_of_tests()
 	df_prevalence, df_R0 = load_prevalence_R0_data()
 	df_sewage = load_sewage_data(smooth = True, shiftdates = False)
@@ -1488,33 +1527,47 @@ def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 5):
 
 	df_response = df_response.loc[df_response.index > startdate_train]
 
+	agegroup_cols = list(df_individual.columns)
+	#convert to percentages to make it a bit easier for the ML algorithms to learn
+	df_individual[agegroup_cols] *= 100
 
 	#correct the results to the day of the test
-	df_daily_covid.index = df_daily_covid.index - pd.Timedelta(f'{result_delay} day')
+	df_overall_positive_tests.index = df_overall_positive_tests.index - pd.Timedelta(f'{result_delay} day')
 
-	#merge datasets
-	df_daily_covid = df_daily_covid.merge(df_n_tests[['Number_of_tests']], right_index = True, left_index = True)
+	#merge datasets for test positivity calculations
+	df_daily_covid = df_n_tests[['Number_of_tests']].merge(df_overall_positive_tests[['Total_reported']], right_index = True, left_index = True)
 
-	#determine test positivity rate
+	#determine test positivity rate for the overall sample
 	df_daily_covid['Positivity_ratio'] = df_daily_covid['Total_reported']/df_daily_covid['Number_of_tests']
 
-	#smooth the testing data, as there are some days with IT problems and underreported
-	#tests, while having overreports the next few days.
+	del df_daily_covid['Number_of_tests'], df_daily_covid['Total_reported']
+
 	if smoothsize != None:
+		#smooth the testing data, as there are some days with IT problems and underreported
+		#tests, while having overreports the next few days.
 		df_daily_covid['Positivity_ratio_smooth'] = df_daily_covid['Positivity_ratio'].rolling(smoothsize).mean()
+
+		del df_daily_covid['Positivity_ratio']
 
 		print('Using smoothed positivity data')
 
-	#correct the results to the day of infection
+		#also smooth the day of disease onset data
+		df_individual[agegroup_cols] = df_individual[agegroup_cols].rolling(smoothsize).mean()
+
+	#correct the overall results to the day of infection
 	df_daily_covid.index = df_daily_covid.index - pd.Timedelta(f'{int(incubation_period + time_to_test_delay)} day')
+
+	### final dataset merge
+	#merge overall positivity ratio with age group data
+	df_daily_covid = df_individual.merge(df_daily_covid, right_index = True, left_index = True)
+	#merge with sewage data
+	df_predictors = df_daily_covid.merge(df_sewage[['RNA_flow_smooth']], right_index = True, left_index = True)
 
 	#determine error on prevalence
 	df_prevalence['prev_abs_error'] = ((df_prevalence['prev_low'] - df_prevalence['prev_avg']).abs() + (df_prevalence['prev_up'] - df_prevalence['prev_avg']).abs())/2
 
-	df_daily_covid['Total_per_million'] = df_daily_covid['Total_reported'] * per_million_factor
+	# df_daily_covid['Total_per_million'] = df_daily_covid['Total_reported'] * per_million_factor
 
-	#merge testing and sewage data
-	df_predictors = df_daily_covid.merge(df_sewage[['RNA_flow_smooth']], right_index = True, left_index = True)
 
 	#select second wave of infections with the high test rate, but stop at the
 	#section where the prevalence flattens (seems unrealistic)
@@ -1534,7 +1587,7 @@ def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 5):
 
 	parameters_used = [
 	'RNA_flow_smooth'
-	]
+	] + agegroup_cols
 
 	if smoothsize != None:
 		parameters_used.append('Positivity_ratio_smooth')
@@ -1607,6 +1660,8 @@ def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 5):
 	### Now make predictions for the most recent data
 	#select the positive test data
 	df_predictors_pred = df_predictors.loc[df_predictors.index > startdate_for_cor]
+	print(df_predictors_pred.tail(10))
+	print('^ data used for predictions ^')
 	#get data in sklearn shape
 	Xpred = dataframes_to_NDarray(df_predictors_pred, parameters_used)
 	#make the predictions
@@ -1665,7 +1720,7 @@ def main():
 
 	# estimate_recent_R(enddate_train = '2020-10-28')
 
-	# estimate_recent_prevalence(enddate_train = '2020-11-01')
+	estimate_recent_prevalence(enddate_train = '2020-11-01')
 
 	# plot_prevalence_R()
 
@@ -1679,7 +1734,7 @@ def main():
 
 	# stringency_R_correlation()
 
-	plot_individual_data()
+	# plot_individual_data()
 
 
 if __name__ == '__main__':
