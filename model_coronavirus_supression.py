@@ -561,18 +561,22 @@ def load_pop_pyramid():
 	df_pop_pyramid = df_pop_pyramid.loc[df_pop_pyramid.index != 'Totaal leeftijd']
 
 	df_pop_pyramid_translated = pd.DataFrame(columns = ['Agegroup', 'N_people'])
-	#go from 5 year to 10 year groups and translate to '0-9'
-	#ignore 100+, too much of a hassle to deal with and only 2400 people
+	#go from 5 year to 10 year groups and translate to '0-9', with a max of '90+'
 	for agesteps in np.arange(10, 101, 10):
-		total_10_year_agegroup = int(df_pop_pyramid.loc[f'{agesteps-10} tot {agesteps-5} jaar'] + df_pop_pyramid.loc[f'{agesteps-5} tot {agesteps} jaar'])
+		if agesteps <= 90:
+			total_10_year_agegroup = int(df_pop_pyramid.loc[f'{agesteps-10} tot {agesteps-5} jaar'] + df_pop_pyramid.loc[f'{agesteps-5} tot {agesteps} jaar'])
 
-		df_pop_pyramid_translated = df_pop_pyramid_translated.append({'Agegroup': f'{agesteps-10}-{agesteps-1}', 'N_people': total_10_year_agegroup}, ignore_index = True)
+			df_pop_pyramid_translated = df_pop_pyramid_translated.append({'Agegroup': f'{agesteps-10}-{agesteps-1}', 'N_people': total_10_year_agegroup}, ignore_index = True)
+		else:
+			total_10_year_agegroup = int(df_pop_pyramid.loc[f'{agesteps-10} tot {agesteps-5} jaar'] + df_pop_pyramid.loc[f'{agesteps-5} tot {agesteps} jaar'] + df_pop_pyramid.loc[f'100 jaar of ouder'])
+
+			df_pop_pyramid_translated = df_pop_pyramid_translated.append({'Agegroup': '90+', 'N_people': total_10_year_agegroup}, ignore_index = True)
 
 	df_pop_pyramid_translated.set_index('Agegroup', inplace = True)
 
 	return df_pop_pyramid_translated
 
-def load_individual_positive_test_data():
+def load_individual_positive_test_data(load_agegroups = False):
 	"""
 	Load data on individual cases of positive tests of COVID-19, including data
 	such as age, and date of disease onset/positive lab result/GGD notification,
@@ -609,28 +613,41 @@ def load_individual_positive_test_data():
 	#now we can get rid of the date statistic type column
 	del df_individual['Date_statistics_type']
 
-	#we need a new column for the number of cases
-	df_individual.loc[:,'N_cases'] = 1
+	if load_agegroups:
+		#we also want an indication of the distribution of the different age groups,
+		#so we first get them in different columns
+		all_agegroups = np.sort(df_individual['Agegroup'].unique())
+		df_individual_agegroups = pd.get_dummies(df_individual['Agegroup']).reindex(columns = all_agegroups, fill_value = 0)
+		#then aggregate
+		df_individual_agegroups = df_individual_agegroups.groupby(['Date']).agg(dict(zip(all_agegroups, ['sum']*len(all_agegroups))))
 
-	#now aggregate over the dates
-	df_individual_aggr = df_individual.groupby(['Date']).agg({'N_cases': 'sum'})
+		#remove pesky columns like '<50' and 'unknown'
+		del df_individual_agegroups['<50'], df_individual_agegroups['Unknown']
 
-	#we also want an indication of the distribution of the different age groups,
-	#so we first get them in different columns
-	all_agegroups = np.sort(df_individual['Agegroup'].unique())
-	df_individual_agegroups = pd.get_dummies(df_individual['Agegroup']).reindex(columns = all_agegroups, fill_value = 0)
-	#then aggregate
-	print(dict(zip(all_agegroups, ['sum']*len(all_agegroups))))
-	df_individual_agegroups = df_individual_agegroups.groupby(['Date']).agg(dict(zip(all_agegroups, ['sum']*len(all_agegroups))))
+		### correct for population pyramid
+		#load data
+		df_pop_pyramid = load_pop_pyramid()
 
-	#correct for population pyramid
-	df_pop_pyramid = load_pop_pyramid()
+		#run over the columns and convert to a fraction of the whole population in
+		#that age group
+		for col in df_individual_agegroups.columns:
+			df_individual_agegroups[col] /= float(df_pop_pyramid.loc[col])
 
-	# print(df_individual_agegroups)
+		#add dates with no cases
+		df_individual_agegroups = df_individual_agegroups.resample('1d').asfreq(fill_value = 0)
 
-	# print(df_individual_agegroups)
+		return df_individual_agegroups
+	else:
+		#we need a new column for the number of cases
+		df_individual.loc[:,'N_cases'] = 1
 
-	return df_individual
+		#now aggregate over the dates
+		df_individual_aggr = df_individual.groupby(['Date']).agg({'N_cases': 'sum'})
+
+		#add dates with no cases
+		df_individual_aggr = df_individual_aggr.resample('1d').asfreq(fill_value = 0)
+
+		return df_individual_aggr
 
 
 def average_kernel(size = 7):
@@ -1032,12 +1049,50 @@ def plot_superspreader_events():
 		for i in range(len(unique_inout)):
 			print(f'{unique_inout[i]}: {inout_count[i]*100/total_SSE:0.01f}% ({inout_count[i]})')
 
-def plot_individual_data():
+def plot_individual_data(use_agegroups = True):
 	"""
 	Plot data from individual cases, which indicate the date of disease onset
 	(if known) and age
 	"""
-	df_individual = load_individual_positive_test_data()
+	df_individual = load_individual_positive_test_data(load_agegroups = use_agegroups)
+
+	#select recent data
+	df_individual = df_individual.loc[df_individual.index >= '2020-08-01']
+
+	if use_agegroups:
+		#convert to an image
+		imgdata = np.array(df_individual).T
+
+		#vertical labels
+		age_labels = list(df_individual.columns)
+
+		#horizontal label dates
+		x_labeldates = pd.date_range(np.min(df_individual.index), np.max(df_individual.index), freq = '7D', format = '%d-%m-%Y').to_series()
+
+		fig, ax = plt.subplots(figsize = (8, 4))
+
+		im = ax.imshow(imgdata*100, cmap = 'Reds', origin = 'lower')
+
+		cbar = plt.colorbar(im)
+		cbar.ax.set_ylabel('Percentage of total population')
+		cbar.ax.ticklabel_format(style = 'sci', axis = 'y', scilimits=(0,0))
+
+		ax.set_aspect(aspect = 6)
+
+		ax.set_yticks(np.arange(10))
+		ax.set_yticklabels(age_labels)
+		ax.set_xticks(np.arange(0, imgdata.shape[1], 7))
+		ax.set_xticklabels(list(x_labeldates.dt.strftime('%d-%m-%Y')))
+
+		ax.set_ylabel('Age group')
+
+		ax.set_title('Percentage of people per age group tested positive per day')
+
+		# ax.xaxis.set_tick_params(rotation = 45)
+		fig.autofmt_xdate()
+
+		plt.savefig(f'{plotloc}Individual_testing_data_agegroups.png', dpi = 200, bbox_inches = 'tight')
+		plt.close()
 
 
 def government_response_results_simple():
