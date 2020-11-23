@@ -862,8 +862,8 @@ def plot_sewage():
 
 	ln1 = ax1.plot(df_sewage.index, df_sewage.n_measurements, color = '#0C83CC', label = 'Number of measurements', alpha = 1)
 
-	ax2.scatter(df_sewage.index, df_sewage['RNA_flow_per_100000'], color = 'maroon', label = 'Average RNA abundance', alpha = 0.4, s = 5)
-	ln2 = ax2.plot(df_sewage.index, df_sewage['RNA_flow_smooth'], color = 'maroon', label = 'Average RNA abundance smoothed')
+	ax2.scatter(df_sewage.index, df_sewage['RNA_flow_per_100000'], color = betterorange, label = 'Average RNA abundance', alpha = 0.6, s = 5)
+	ln2 = ax2.plot(df_sewage.index, df_sewage['RNA_flow_smooth'], color = betterorange, label = 'Average RNA abundance smoothed')
 
 	ax1.xaxis.set_tick_params(rotation = 45)
 
@@ -1738,7 +1738,7 @@ def main():
 
 	# plot_superspreader_events()
 
-	estimate_recent_R(enddate_train = '2020-10-28')
+	# estimate_recent_R(enddate_train = '2020-10-28')
 
 	# estimate_recent_prevalence(enddate_train = '2020-11-01')
 
@@ -1748,7 +1748,7 @@ def main():
 
 	# plot_daily_results()
 
-	# plot_sewage()
+	plot_sewage()
 
 	# plot_hospitalization()
 
