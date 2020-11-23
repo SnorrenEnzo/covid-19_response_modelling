@@ -18,6 +18,7 @@ from sklearn.linear_model import Ridge, LinearRegression, Lasso
 from sklearn.ensemble import AdaBoostRegressor, RandomForestRegressor
 
 dataloc = './Data/'
+static_data_loc = f'{dataloc}Edit_only/'
 plotloc = './Plots/'
 plotloc_government_response = './Gov_response_plots/'
 mobplotloc = f'{plotloc}Mobility/'
@@ -35,6 +36,15 @@ time_till_recovery = 14
 betterblue = '#016FB9'
 betterorange = '#F17105'
 betterblack = '#141414'
+
+### dateshift values needed to correct for the delay between the onset of
+### symptoms and the result of the test
+#for source of incubation period, see the readme
+incubation_period = 6 #days, left of average of 8.3 due to extremely skewed distribution
+#delay between first symptoms (date of desease onset) and test performed, determined
+#by willingness to be tested and available testing capacity. Set by assumption
+time_to_test_delay = 2 #days
+result_delay = 1
 
 def downloadSave(url, file_name, check_file_exists = False):
 	"""
@@ -528,6 +538,100 @@ def load_superspreader_events_data():
 
 	return df_SSE
 
+def load_pop_pyramid():
+	"""
+	Data source:
+	https://opendata.cbs.nl/statline/?dl=308BE#/CBS/nl/dataset/7461bev/table
+	"""
+	fname_pop_pyramid = f'{static_data_loc}Bevolking__leeftijd__burgerlijke_staat_1-1-2020.csv'
+	df_pop_pyramid = pd.read_csv(fname_pop_pyramid, usecols = ['Geslacht', 'Leeftijd', 'Bevolking (aantal)', 'Burgerlijke staat'], sep = ';')
+
+	#only use columns of totals, ignore sex
+	df_pop_pyramid = df_pop_pyramid.loc[df_pop_pyramid['Geslacht'] == 'Totaal mannen en vrouwen']
+	#only select the totals of the maritial status
+	df_pop_pyramid = df_pop_pyramid.loc[df_pop_pyramid['Burgerlijke staat'] == 'Totaal burgerlijke staat']
+
+	del df_pop_pyramid['Geslacht'], df_pop_pyramid['Burgerlijke staat']
+
+	df_pop_pyramid = df_pop_pyramid.rename(columns = {'Leeftijd': 'Agegroup', 'Bevolking (aantal)': 'N_people'})
+
+	df_pop_pyramid.set_index('Agegroup', inplace = True)
+
+	#ignore total
+	df_pop_pyramid = df_pop_pyramid.loc[df_pop_pyramid.index != 'Totaal leeftijd']
+
+	df_pop_pyramid_translated = pd.DataFrame(columns = ['Agegroup', 'N_people'])
+	#go from 5 year to 10 year groups and translate to '0-9'
+	#ignore 100+, too much of a hassle to deal with and only 2400 people
+	for agesteps in np.arange(10, 101, 10):
+		total_10_year_agegroup = int(df_pop_pyramid.loc[f'{agesteps-10} tot {agesteps-5} jaar'] + df_pop_pyramid.loc[f'{agesteps-5} tot {agesteps} jaar'])
+
+		df_pop_pyramid_translated = df_pop_pyramid_translated.append({'Agegroup': f'{agesteps-10}-{agesteps-1}', 'N_people': total_10_year_agegroup}, ignore_index = True)
+
+	df_pop_pyramid_translated.set_index('Agegroup', inplace = True)
+
+	return df_pop_pyramid_translated
+
+def load_individual_positive_test_data():
+	"""
+	Load data on individual cases of positive tests of COVID-19, including data
+	such as age, and date of disease onset/positive lab result/GGD notification,
+	whichever came first.
+
+	More info:
+	https://data.rivm.nl/geonetwork/srv/dut/catalog.search#/metadata/2c4357c8-76e4-4662-9574-1deb8a73f724
+
+	Legend:
+	DOO = Date of disease onset
+	DPL = Date of first Positive Labresult
+	DON = Date of Notification
+	"""
+	individual_data_url = 'https://data.rivm.nl/covid-19/COVID-19_casus_landelijk.csv'
+	individual_data_fname = f'{dataloc}individual_cases.csv'
+
+	downloadSave(individual_data_url, individual_data_fname, check_file_exists = True)
+
+	#load only a few columns
+	df_individual = pd.read_csv(individual_data_fname, usecols = ['Date_statistics', 'Date_statistics_type', 'Agegroup'], sep = ';')
+
+	df_individual = df_individual.rename(columns = {'Date_statistics': 'Date'})
+	df_individual['Date'] = pd.to_datetime(df_individual['Date'], format = '%Y-%m-%d')
+
+	df_individual.set_index('Date', inplace = True)
+
+	### We want all dates to be DOO ideally. To do this, we will convert DPL and
+	### DON dates using estimates
+	#first DON, biggest shift back
+	df_individual.loc[df_individual['Date_statistics_type'] == 'DON'].index = df_individual.loc[df_individual['Date_statistics_type'] == 'DON'].index - pd.Timedelta(f'{time_to_test_delay + result_delay} day')
+	#then DPL, smaller shift
+	df_individual.loc[df_individual['Date_statistics_type'] == 'DPL'].index = df_individual.loc[df_individual['Date_statistics_type'] == 'DPL'].index - pd.Timedelta(f'{time_to_test_delay} day')
+
+	#now we can get rid of the date statistic type column
+	del df_individual['Date_statistics_type']
+
+	#we need a new column for the number of cases
+	df_individual.loc[:,'N_cases'] = 1
+
+	#now aggregate over the dates
+	df_individual_aggr = df_individual.groupby(['Date']).agg({'N_cases': 'sum'})
+
+	#we also want an indication of the distribution of the different age groups,
+	#so we first get them in different columns
+	all_agegroups = np.sort(df_individual['Agegroup'].unique())
+	df_individual_agegroups = pd.get_dummies(df_individual['Agegroup']).reindex(columns = all_agegroups, fill_value = 0)
+	#then aggregate
+	print(dict(zip(all_agegroups, ['sum']*len(all_agegroups))))
+	df_individual_agegroups = df_individual_agegroups.groupby(['Date']).agg(dict(zip(all_agegroups, ['sum']*len(all_agegroups))))
+
+	#correct for population pyramid
+	df_pop_pyramid = load_pop_pyramid()
+
+	# print(df_individual_agegroups)
+
+	# print(df_individual_agegroups)
+
+	return df_individual
+
 
 def average_kernel(size = 7):
 	return np.ones(size)/size
@@ -928,6 +1032,13 @@ def plot_superspreader_events():
 		for i in range(len(unique_inout)):
 			print(f'{unique_inout[i]}: {inout_count[i]*100/total_SSE:0.01f}% ({inout_count[i]})')
 
+def plot_individual_data():
+	"""
+	Plot data from individual cases, which indicate the date of disease onset
+	(if known) and age
+	"""
+	df_individual = load_individual_positive_test_data()
+
 
 def government_response_results_simple():
 	"""
@@ -1322,12 +1433,6 @@ def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 5):
 
 	df_response = df_response.loc[df_response.index > startdate_train]
 
-	### correct for the delay between the onset of symptoms and the result of the test
-	#for source of incubation period, see the readme
-	incubation_period = 6 #days, left of average of 8.3 due to extremely skewed distribution
-	#test delay determined from anecdotal evidence
-	time_to_test_delay = 2 #days
-	result_delay = 1
 
 	#correct the results to the day of the test
 	df_daily_covid.index = df_daily_covid.index - pd.Timedelta(f'{result_delay} day')
@@ -1503,7 +1608,7 @@ def main():
 
 	# plot_superspreader_events()
 
-	estimate_recent_R(enddate_train = '2020-10-28')
+	# estimate_recent_R(enddate_train = '2020-10-28')
 
 	# estimate_recent_prevalence(enddate_train = '2020-11-01')
 
@@ -1518,6 +1623,8 @@ def main():
 	# plot_hospitalization()
 
 	# stringency_R_correlation()
+
+	plot_individual_data()
 
 
 if __name__ == '__main__':
