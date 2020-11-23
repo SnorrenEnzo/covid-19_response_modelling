@@ -8,6 +8,7 @@
 #### RIVM data
 Number of contagious people (prevalence): [link](https://data.rivm.nl/covid-19/COVID-19_prevalentie.json)
 Number of positively tested people in the Netherlands, updated each day at 10:00 CEST: [link](https://data.rivm.nl/covid-19/COVID-19_aantallen_gemeente_per_dag.csv)
+Each case of positive test, with first day of illness, age etc: [link](https://data.rivm.nl/geonetwork/srv/dut/catalog.search#/metadata/2c4357c8-76e4-4662-9574-1deb8a73f724)
 Reproductive number: [link](https://data.rivm.nl/covid-19/COVID-19_reproductiegetal.json)
 
 More raw data: [link](https://coronadashboard.rijksoverheid.nl/verantwoording)
@@ -16,12 +17,17 @@ Weekly update [link](https://www.rivm.nl/coronavirus-covid-19/actueel) with:
 - Number of tests performed per week
 - Infection context, like at home, at work, pub etc.
 
-#### Other data
+#### Other Dutch data
 A huge list of data sources: [link](https://www.databronnencovid19.nl/)
 
 Predictions: [link](https://covid19.healthdata.org/netherlands)
 
 NICE intensive care data: [link](https://www.databronnencovid19.nl/Bron?naam=Nationale-Intensive-Care-Evaluatie)
+
+Corona Locator, with a plethora of data: [link](https://bddataplan.nl/corona/)
+Up to date clusters: [link](https://coronalocator.knack.com/corona-locator#cluster-meldingen/?view_670_per_page=5000&view_670_page=1&view_641_0_filters=%5B%7B%22value%22%3A%22%22%2C%22text%22%3A%22Alles%22%2C%22operator%22%3A%22is%20not%20blank%22%2C%22field%22%3A%22field_563%22%7D%5D&view_641_1_filters=%5B%7B%22value%22%3A%22%22%2C%22text%22%3A%22Alle%22%2C%22operator%22%3A%22is%20not%20blank%22%2C%22field%22%3A%22field_563%22%7D%5D)
+
+#### Other international data
 
 Superspreader event database: [article](https://kmswinkels.medium.com/covid-19-superspreading-events-database-4c0a7aa2342b), [Google docs database](https://docs.google.com/spreadsheets/d/1c9jwMyT1lw2P0d6SDTno6nHLGMtpheO9xJyGHgdBoco/edit#gid=1812932356)
 

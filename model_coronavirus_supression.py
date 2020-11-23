@@ -138,18 +138,37 @@ def load_government_response_data():
 		#filter on the netherlands
 		df_response = df_response.loc[df_response['CountryCode'] == 'NLD']
 
+		#get the individual index column names
+		desired_indices = np.array([f'C{x}' for x in range(1, 9)] + ['E1', 'E2'])
+		all_columns = np.array(list(df_response.columns))
+		desired_indices_names = {all_columns[np.flatnonzero(np.core.defchararray.find(all_columns, idx) != -1)[0]]: idx for idx in desired_indices}
+
 		#select desired columns
-		df_response = df_response[['Date', 'StringencyIndex']]
+		df_response = df_response[['Date', 'StringencyIndex'] + list(desired_indices_names.keys())]
+
+		#rename columns to shorter names
+		df_response = df_response.rename(columns = desired_indices_names)
 
 		#read dates
 		df_response['Date'] = pd.to_datetime(df_response['Date'], format = '%Y%m%d')
 		df_response.set_index('Date', inplace = True)
 
+		###extrapolate the last few values
+		#determine nan locs
+		nanloc = df_response.loc[df_response['StringencyIndex'].isnull()].index
+		#and last date of not nan
+		last_date_with_data = df_response.loc[~df_response['StringencyIndex'].isnull()].index[-1]
+
+		#now fill the rows with no data with the latest data
+		for l in nanloc:
+			df_response.loc[l] = df_response.loc[last_date_with_data]
+
+		# save this edited file to a csv
 		df_response.to_csv(nl_fname)
 
 	return df_response
 
-def load_mobility_data(smooth = False, smoothsize = 7, apple_mobility_url_base = 'https://covid19-static.cdn-apple.com/covid19-mobility-data/2021HotfixDev18/v3/en-us/applemobilitytrends-'):
+def load_mobility_data(smooth = False, smoothsize = 7, apple_mobility_url_base = 'https://covid19-static.cdn-apple.com/covid19-mobility-data/2021HotfixDev21/v3/en-us/applemobilitytrends-'):
 	"""
 	Load Apple and Google mobility data. Downloadable from:
 
@@ -1330,20 +1349,19 @@ def estimate_recent_R(enddate_train = '2020-10-25'):
 	df_prevalence, df_R = load_prevalence_R0_data()
 	df_google_mob, df_apple_mob = load_mobility_data(smooth = True)
 	df_sewage = load_sewage_data(smooth = True, shiftdates = True)
-
-	#for the plot as a reference
+	#for the plot as a reference as well as data input
 	df_response = load_government_response_data()
-
-	df_response = df_response.loc[df_response.index > startdate_pred]
+	df_response_plot = df_response.loc[df_response.index > startdate_pred]
 
 	#determine error of R
 	df_R['Rt_abs_error'] = ((df_R['Rt_low'] - df_R['Rt_avg']).abs() + (df_R['Rt_up'] - df_R['Rt_avg']).abs())/2
 
 	#merge datasets
 	# df_mob_R = df_google_mob.merge(df_R, right_index = True, left_index = True)
-	df_mob_R = df_google_mob.join(df_R, how = 'outer')
+	df_mob_R = df_google_mob.join(df_R, how = 'inner')
 	df_mob_R = df_mob_R.join(df_apple_mob, how = 'inner')
-	df_mob_R = df_mob_R.join(df_sewage[['RNA_flow_smooth']], how = 'outer')
+	df_mob_R = df_mob_R.join(df_sewage[['RNA_flow_smooth']], how = 'inner')
+	df_mob_R = df_mob_R.join(df_response, how = 'inner')
 
 	#select date range
 	mask = (df_mob_R.index > '2020-04-01') & (df_mob_R.index <= enddate_train)
@@ -1415,7 +1433,7 @@ def estimate_recent_R(enddate_train = '2020-10-25'):
 			'driving_smooth',
 			'walking_smooth',
 			'transit_smooth'
-		]
+		] + list(df_response.columns)
 		#get the multiple parameters into a single array
 		# X_train = np.zeros((len(df_train), len(best_correlating_metrics)))
 		# for i in range(len(best_correlating_metrics)):
@@ -1485,7 +1503,9 @@ def estimate_recent_R(enddate_train = '2020-10-25'):
 		ln2 = ax1.plot(df_pred.index, Y_pred, label = f'Prediction ($R^2$: {r_squared:0.03f})', color = betterorange)
 
 		#also plot government response
-		ln3 = ax2.plot(df_response.index, df_response['StringencyIndex'], label = 'Stringency index', color = betterblack)
+		#limit to days with prediction data
+		df_response_plot = df_response_plot.loc[df_response_plot.index <= df_pred.index[-1]]
+		ln3 = ax2.plot(df_response_plot.index, df_response_plot['StringencyIndex'], label = 'Stringency index', color = betterblack)
 
 		ax1.grid(linestyle = ':')
 		# ax.legend(loc = 'best')
@@ -1718,9 +1738,9 @@ def main():
 
 	# plot_superspreader_events()
 
-	# estimate_recent_R(enddate_train = '2020-10-28')
+	estimate_recent_R(enddate_train = '2020-10-28')
 
-	estimate_recent_prevalence(enddate_train = '2020-11-01')
+	# estimate_recent_prevalence(enddate_train = '2020-11-01')
 
 	# plot_prevalence_R()
 
@@ -1735,7 +1755,6 @@ def main():
 	# stringency_R_correlation()
 
 	# plot_individual_data()
-
 
 if __name__ == '__main__':
 	main()
