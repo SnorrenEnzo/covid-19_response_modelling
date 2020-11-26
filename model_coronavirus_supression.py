@@ -1651,7 +1651,7 @@ def estimate_recent_R(enddate_train = '2020-10-25'):
 		### plot the predictions versus ground truth
 		fig, ax = plt.subplots()
 
-		ax.scatter(Y, clf.predict(X), alpha = 0.4, color = 'navy', s = 8, label = f'Predictions ($R^2$ = {r_squared_test:0.03f})')
+		ax.scatter(Y, clf.predict(X), alpha = 0.4, color = 'navy', s = 8, label = f'Predictions (Test $R^2$ = {r_squared_test:0.03f})')
 		#indicate one to one relationship
 		xlims = ax.get_xlim()
 		ylims = ax.get_ylim()
@@ -1689,7 +1689,7 @@ def estimate_recent_R(enddate_train = '2020-10-25'):
 		#indicate error margins on ground truth
 		ax1.fill_between(df_pred.index, df_pred['Rt_low'], df_pred['Rt_up'], alpha = 0.4, color = betterblue)
 
-		ln2 = ax1.plot(df_pred.index, Y_pred, label = f'Prediction ($R^2$: {r_squared_test:0.03f})', color = betterorange)
+		ln2 = ax1.plot(df_pred.index, Y_pred, label = f'Prediction (Test $R^2$: {r_squared_test:0.03f})', color = betterorange)
 
 		#also plot government response
 		#limit to days with prediction data
@@ -1818,10 +1818,25 @@ def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 5):
 	'''
 
 	### get data into the shape required for sklearn functions
-	X_train = dataframes_to_NDarray(df_predictors_cor, parameters_used)
+	X = dataframes_to_NDarray(df_predictors_cor, parameters_used)
+	Y = np.array(df_prevalence_cor['prev_avg'])
+	weight = 1/np.array(df_prevalence_cor['prev_abs_error'])
 
-	Y_train = np.array(df_prevalence_cor['prev_avg'])
-	weight_train = 1/np.array(df_prevalence_cor['prev_abs_error'])
+	###split into train and test set
+	rs = ShuffleSplit(n_splits = 1, test_size = 0.4, random_state = 1923)
+
+	#get splitting indices
+	for train_index, test_index in rs.split(X, Y):
+		pass
+
+	#perform splitting
+	X_train = X[train_index]
+	Y_train = Y[train_index]
+	weight_train = weight[train_index]
+
+	X_test = X[test_index]
+	Y_test = Y[test_index]
+	weight_test = weight[test_index]
 
 	### apply regression
 	# clf = Ridge(alpha = 1.)
@@ -1829,20 +1844,22 @@ def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 5):
 	# clf = AdaBoostRegressor()
 	clf.fit(X_train, Y_train, sample_weight = weight_train)
 
-	r_squared = clf.score(X_train, Y_train, sample_weight = weight_train)
+	r_squared_train = clf.score(X_train, Y_train, sample_weight = weight_train)
+	r_squared_test = clf.score(X_test, Y_test, sample_weight = weight_test)
 
-	print(f'R^2: {r_squared:0.03f}')
+	print(f'Train R^2: {r_squared_train:0.03f}')
+	print(f'Test R^2: {r_squared_test:0.03f}')
 
 
 	### plot accuracy of predictions using the predictions versus ground truth
 	fig, ax = plt.subplots()
 
-	train_pred = clf.predict(X_train)
-	ax.scatter(Y_train, train_pred, alpha = 0.4, color = 'navy', s = 8, label = f'Predictions ($R^2$ = {r_squared:0.03f})')
+	test_pred = clf.predict(X_test)
+	ax.scatter(Y_test, test_pred, alpha = 0.4, color = 'navy', s = 8, label = f'Predictions (Test $R^2$ = {r_squared_test:0.03f})')
 
 	#plot error bars
-	errorbar_data = np.stack((df_prevalence_cor['prev_low'].values, df_prevalence_cor['prev_up'].values))
-	ax.errorbar(Y_train, train_pred, xerr = errorbar_data, ecolor = 'navy', elinewidth = 0.5, capthick = 0.5, capsize = 2, errorevery = 2, ls = 'none')
+	errorbar_data = np.stack((df_prevalence_cor['prev_low'].values[test_index], df_prevalence_cor['prev_up'].values[test_index]))
+	ax.errorbar(Y_test, test_pred, xerr = errorbar_data, ecolor = 'navy', elinewidth = 0.5, capthick = 0.5, capsize = 2, errorevery = 2, ls = 'none')
 
 
 	#indicate one to one relationship
@@ -1871,8 +1888,8 @@ def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 5):
 	### Now make predictions for the most recent data
 	#select the positive test data
 	df_predictors_pred = df_predictors.loc[df_predictors.index > startdate_for_cor]
-	print(df_predictors_pred.tail(10))
-	print('^ data used for predictions ^')
+	# print(df_predictors_pred.tail(10))
+	# print('^ data used for predictions ^')
 	#get data in sklearn shape
 	Xpred = dataframes_to_NDarray(df_predictors_pred, parameters_used)
 	#make the predictions
@@ -1893,7 +1910,7 @@ def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 5):
 	ax1.fill_between(df_prevalence_sel.index, df_prevalence_sel['prev_low'], df_prevalence_sel['prev_up'], alpha = 0.4, color = betterblue)
 
 	#predictions
-	ln2 = ax1.plot(df_prevalence_pred.index, df_prevalence_pred['Prev_pred'], label = f'Linear prediction ($R^2 = {r_squared:0.03f}$)', color = betterorange)
+	ln2 = ax1.plot(df_prevalence_pred.index, df_prevalence_pred['Prev_pred'], label = f'Linear prediction (Test $R^2 = {r_squared_test:0.03f}$)', color = betterorange)
 
 	#also plot government response
 	df_response_plot = df_response.loc[df_response.index <= df_prevalence_pred.index[-1]]
@@ -1908,7 +1925,9 @@ def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 5):
 
 	lns = ln1 + ln2 + ln3
 	labs = [l.get_label() for l in lns]
-	ax1.legend(lns, labs, loc = 'lower right')
+	ax1.legend(lns, labs, loc = 'lower right', prop = {'size': 10})
+
+	indicate_school_closed(ax1)
 
 	# ax.xaxis.set_tick_params(rotation = 45)
 	# ax.xaxis.set_major_locator(mdates.AutoDateLocator(minticks = 3, maxticks = 6))
@@ -1936,7 +1955,7 @@ def main():
 
 	estimate_recent_R(enddate_train = '2020-10-28')
 
-	# estimate_recent_prevalence(enddate_train = '2020-11-01')
+	estimate_recent_prevalence(enddate_train = '2020-11-01')
 
 	# plot_prevalence_R()
 
