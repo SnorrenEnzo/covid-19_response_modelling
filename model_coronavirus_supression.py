@@ -670,6 +670,40 @@ def load_individual_positive_test_data(load_agegroups = False):
 
 		return df_individual_aggr
 
+def load_cluster_data():
+	"""
+	Load data on COVID-19 clusters from
+	https://coronalocator.knack.com/corona-locator#home/
+	"""
+
+	df_clusters = pd.read_csv(f'{static_data_loc}coronalocator_clusters.csv', usecols = ['Datum', 'Gemeente', 'Betreft', 'Aantal COVID-19'])
+
+	df_clusters = df_clusters.rename(columns = {'Datum': 'Date', 'Betreft': 'Setting', 'Aantal COVID-19': 'N_infections'})
+
+	df_clusters['Date'] = pd.to_datetime(df_clusters['Date'], format = '%d/%m/%Y ')
+
+	### we will group by week for the data visualization
+	#first shift dates by 7 days so it represents the start of the week
+	df_clusters['Date'] -= pd.to_timedelta(7, unit = 'd')
+	df_clusters.set_index('Date', inplace = True)
+
+	#add column indicating the number of clusters
+	# df_clusters.loc[:,'N_clusters'] = 1
+
+	#perform the group by week
+	# df_clusters = df_clusters.groupby(['Setting', pd.Grouper(key = 'Date', freq = 'W-MON')])['N_clusters'].sum().reset_index().sort_values('Date')
+
+	#give each unique setting a column
+	all_settings = np.sort(df_clusters['Setting'].unique())
+	df_clusters = pd.get_dummies(df_clusters['Setting']).reindex(columns = all_settings, fill_value = 0)
+
+	#then group by week
+	df_clusters = df_clusters.groupby([pd.Grouper(freq = 'W-MON')])[all_settings].sum().reset_index().sort_index()#.sort_values('Date')
+
+	df_clusters.set_index('Date', inplace = True)
+
+	return df_clusters
+
 
 def average_kernel(size = 7):
 	return np.ones(size)/size
@@ -1151,6 +1185,51 @@ def plot_individual_data(use_agegroups = True):
 
 			plt.savefig(f'{plotloc}Individual_testing_data_agegroups_line.png', dpi = 200, bbox_inches = 'tight')
 			plt.close()
+
+def plot_cluster_change():
+	"""
+	Plot the change in COVID-19 cluster types
+	"""
+
+	df_clusters = load_cluster_data()
+
+	df_clusters = df_clusters.loc[df_clusters.index > '2020-07-01']
+
+
+	fig, ax = plt.subplots()
+
+
+	plot_columns = {
+		'School (basis) ': 'Elementary school',
+		'School/Studie (overig) ': 'Highschool/college',
+		'(Sport)vereniging ': '(Sports) association',
+		'Bedrijf (overig) / Organisatie ':  'Company (other)',
+		'Evenement / Feest ': 'Event/party',
+		'Familie / Vrienden ': 'Family/friends',
+		'Horeca / Vakantieverblijf ': 'Horeca/vacation stay',
+		'Woonvoorziening / Verzorging ': 'Living arrangement/carehome'
+	}
+
+	cmap = plt.get_cmap('plasma')
+	cNorm  = mcolors.Normalize(vmin = 0, vmax = len(plot_columns) - 1)
+	scalarMap = cmx.ScalarMappable(norm = cNorm, cmap = cmap)
+
+	for i, key in enumerate(plot_columns.keys()):
+		ax.plot(df_clusters.index, df_clusters[key], label = plot_columns[key], color = scalarMap.to_rgba(i))
+
+	ax.set_ylabel('Number of clusters')
+	ax.set_title('Number of COVID-19 clusters in different settings per week')
+
+	ax.grid(linestyle = ':')
+	ax.legend(loc = 'best', prop = {'size': 7})
+
+	fig.autofmt_xdate()
+	myfmt = mdates.DateFormatter('%d-%m-%Y')
+	ax.xaxis.set_major_formatter(myfmt)
+
+	plt.savefig(f'{plotloc}Cluster_amount_per_setting.png', dpi = 200, bbox_inches = 'tight')
+	plt.close()
+
 
 def government_response_results_simple():
 	"""
@@ -1745,7 +1824,7 @@ def main():
 
 	# estimate_recent_R(enddate_train = '2020-10-28')
 
-	estimate_recent_prevalence(enddate_train = '2020-11-01')
+	# estimate_recent_prevalence(enddate_train = '2020-11-01')
 
 	# plot_prevalence_R()
 
@@ -1753,6 +1832,7 @@ def main():
 	# plot_daily_results()
 	# plot_sewage()
 	# plot_individual_data()
+	plot_cluster_change()
 
 if __name__ == '__main__':
 	main()
