@@ -18,6 +18,7 @@ from zipfile import ZipFile
 import datetime as dt
 
 from sklearn.linear_model import Ridge, LinearRegression, Lasso
+from sklearn.model_selection import train_test_split, ShuffleSplit
 from sklearn.ensemble import AdaBoostRegressor, RandomForestRegressor
 
 dataloc = './Data/'
@@ -705,6 +706,61 @@ def load_cluster_data():
 
 	return df_clusters
 
+def load_weather_data(smooth = False):
+	"""
+	Load weather data from the KNMI, location De Bilt. More info:
+	https://www.knmi.nl/nederland-nu/klimatologie/daggegevens
+	"""
+
+	url_weather = 'https://cdn.knmi.nl/knmi/map/page/klimatologie/gegevens/daggegevens/etmgeg_260.zip'
+	fname_weather_zip = f'{dataloc}daily_weather.zip'
+	fname_weather = f'{dataloc}daily_weather.txt'
+
+	downloaded = downloadSave(url_weather, fname_weather_zip, check_file_exists = True)
+
+	if downloaded:
+		#unzip
+		unziploc = f'{dataloc}unzip/'
+		with ZipFile(fname_weather_zip, 'r') as zfile:
+			os.mkdir(unziploc)
+			zfile.extractall(unziploc)
+
+		#get the desired file
+		zipfilename = glob.glob(unziploc + '*.txt')[0]
+		# print(zipfilename)
+		# #rename
+		os.rename(zipfilename, fname_weather)
+
+		#remove downloaded files
+		shutil.rmtree(unziploc)
+		#also remove zip file
+		# os.remove(google_mobility_fname_zip)
+
+	df_weather = pd.read_csv(fname_weather, skiprows = 47, usecols = ['YYYYMMDD', '   TG', '    Q', '   UG'])
+
+	df_weather = df_weather.rename(columns = {'YYYYMMDD': 'Date', '   TG': 'TAvg', '    Q': 'Rad', '   UG': 'HumAvg'})
+
+	df_weather['Date'] = pd.to_datetime(df_weather['Date'], format = '%Y%m%d')
+	df_weather.set_index('Date', inplace = True)
+
+	#select data from start of the pandemic
+	df_weather = df_weather.loc[df_weather.index > '2020-02-15']
+
+	#convert average temperature from 0.1 degrees C to 1 degree C
+	df_weather['TAvg'] /= 10
+
+	#smooth data if desired
+	if smooth:
+		windowsize = 3
+
+		df_weather = df_weather.rolling(windowsize).mean()
+
+	# fig, ax = plt.subplots()
+	# ax.plot(df_weather.index, df_weather['Rad'])
+	# plt.show()
+
+	return df_weather
+
 
 def average_kernel(size = 7):
 	return np.ones(size)/size
@@ -800,6 +856,11 @@ def shade_region(ax, dates, colour = 'black', alpha = 0.2, label = None):
 	ax.set_xlim(xlims)
 	ax.set_ylim(ylims)
 
+def indicate_school_closed(ax):
+	autumn_break_dates = get_period_dates('autumn break')
+	shade_region(ax, autumn_break_dates, label = 'School closure/vacations')
+	school_closure_dates = get_period_dates('school closure')
+	shade_region(ax, school_closure_dates)
 
 def plot_prevalence_R():
 	df_prevalence, df_R0 = load_prevalence_R0_data()
@@ -1245,10 +1306,7 @@ def plot_cluster_change():
 		ax.plot(df_clusters.index, df_clusters[key], label = plot_columns[key], color = scalarMap.to_rgba(i))
 
 	#also indicate school closures etc
-	autumn_break_dates = get_period_dates('autumn break')
-	shade_region(ax, autumn_break_dates, label = 'School closure/vacations')
-	school_closure_dates = get_period_dates('school closure')
-	shade_region(ax, school_closure_dates)
+	indicate_school_closed(ax)
 
 	ax.set_ylabel('Number of clusters')
 	ax.set_title('Number of COVID-19 clusters in different settings per week')
@@ -1461,6 +1519,7 @@ def estimate_recent_R(enddate_train = '2020-10-25'):
 	df_prevalence, df_R = load_prevalence_R0_data()
 	df_google_mob, df_apple_mob = load_mobility_data(smooth = True)
 	df_sewage = load_sewage_data(smooth = True, shiftdates = True)
+	df_weather = load_weather_data(smooth = True)
 	#for the plot as a reference as well as data input
 	df_response = load_government_response_data()
 	df_response_plot = df_response.loc[df_response.index > startdate_pred]
@@ -1474,6 +1533,7 @@ def estimate_recent_R(enddate_train = '2020-10-25'):
 	df_mob_R = df_mob_R.join(df_apple_mob, how = 'inner')
 	df_mob_R = df_mob_R.join(df_sewage[['RNA_flow_smooth']], how = 'inner')
 	df_mob_R = df_mob_R.join(df_response, how = 'inner')
+	df_mob_R = df_mob_R.join(df_weather, how = 'inner')
 
 	#select date range
 	mask = (df_mob_R.index > '2020-04-01') & (df_mob_R.index <= enddate_train)
@@ -1544,16 +1604,31 @@ def estimate_recent_R(enddate_train = '2020-10-25'):
 			'workplaces_smooth',
 			'driving_smooth',
 			'walking_smooth',
-			'transit_smooth'
+			'transit_smooth',
+			'TAvg',
+			'Rad'
 		] + list(df_response.columns)
 		#get the multiple parameters into a single array
-		# X_train = np.zeros((len(df_train), len(best_correlating_metrics)))
-		# for i in range(len(best_correlating_metrics)):
-		# 	X_train[:,i] = np.array(df_train[best_correlating_metrics[i]])
-		X_train = dataframes_to_NDarray(df_train, best_correlating_metrics)
-		Y_train = np.array(df_train['Rt_avg'])
+		X = dataframes_to_NDarray(df_train, best_correlating_metrics)
+		Y = np.array(df_train['Rt_avg'])
+		#weights are important; can reduce training R^2 from 0.859 to 0.820
+		weight = 1/np.array(df_train['Rt_abs_error'])
 
-		weight_train = 1/np.array(df_train['Rt_abs_error'])
+		###split into train and test set
+		rs = ShuffleSplit(n_splits = 1, test_size = 0.2, random_state = 1923)
+
+		#get splitting indices
+		for train_index, test_index in rs.split(X, Y):
+			pass
+
+		#perform splitting
+		X_train = X[train_index]
+		Y_train = Y[train_index]
+		weight_train = weight[train_index]
+
+		X_test = X[test_index]
+		Y_test = Y[test_index]
+		weight_test = weight[test_index]
 
 		#apply ridge regression, see here for more info:
 		#https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.Ridge.html#sklearn.linear_model.Ridge
@@ -1566,15 +1641,17 @@ def estimate_recent_R(enddate_train = '2020-10-25'):
 		clf.fit(X_train, Y_train, sample_weight = weight_train)
 		# clf.fit(X_train, Y_train)
 
-		r_squared = clf.score(X_train, Y_train, sample_weight = weight_train)
+		r_squared_train = clf.score(X_train, Y_train, sample_weight = weight_train)
+		r_squared_test = clf.score(X_test, Y_test, sample_weight = weight_test)
 		# r_squared = clf.score(X_train, Y_train)
 
-		print(f'R^2: {r_squared:0.03f}')
+		print(f'Train R^2: {r_squared_train:0.03f}')
+		print(f'Test R^2: {r_squared_test:0.03f}')
 
 		### plot the predictions versus ground truth
 		fig, ax = plt.subplots()
 
-		ax.scatter(Y_train, clf.predict(X_train), alpha = 0.4, color = 'navy', s = 8, label = f'Predictions ($R^2$ = {r_squared:0.03f})')
+		ax.scatter(Y, clf.predict(X), alpha = 0.4, color = 'navy', s = 8, label = f'Predictions ($R^2$ = {r_squared_test:0.03f})')
 		#indicate one to one relationship
 		xlims = ax.get_xlim()
 		ylims = ax.get_ylim()
@@ -1612,7 +1689,7 @@ def estimate_recent_R(enddate_train = '2020-10-25'):
 		#indicate error margins on ground truth
 		ax1.fill_between(df_pred.index, df_pred['Rt_low'], df_pred['Rt_up'], alpha = 0.4, color = betterblue)
 
-		ln2 = ax1.plot(df_pred.index, Y_pred, label = f'Prediction ($R^2$: {r_squared:0.03f})', color = betterorange)
+		ln2 = ax1.plot(df_pred.index, Y_pred, label = f'Prediction ($R^2$: {r_squared_test:0.03f})', color = betterorange)
 
 		#also plot government response
 		#limit to days with prediction data
@@ -1631,6 +1708,8 @@ def estimate_recent_R(enddate_train = '2020-10-25'):
 		ax1.set_title('$R$ prediction')
 
 		ax2.set_ylim(0)
+
+		indicate_school_closed(ax1)
 
 		#fix date ticks
 		ax1.set_xticks(pd.date_range(np.min(df_pred.index), np.max(df_pred.index + pd.Timedelta(f'7 day')), freq = '2W'))
@@ -1855,7 +1934,7 @@ def main():
 
 	# plot_superspreader_events()
 
-	# estimate_recent_R(enddate_train = '2020-10-28')
+	estimate_recent_R(enddate_train = '2020-10-28')
 
 	# estimate_recent_prevalence(enddate_train = '2020-11-01')
 
@@ -1865,7 +1944,7 @@ def main():
 	# plot_daily_results()
 	# plot_sewage()
 	# plot_individual_data()
-	plot_cluster_change()
+	# plot_cluster_change()
 
 if __name__ == '__main__':
 	main()
