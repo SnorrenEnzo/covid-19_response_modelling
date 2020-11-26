@@ -168,7 +168,7 @@ def load_government_response_data():
 
 	return df_response
 
-def load_mobility_data(smooth = False, smoothsize = 7, apple_mobility_url_base = 'https://covid19-static.cdn-apple.com/covid19-mobility-data/2021HotfixDev21/v3/en-us/applemobilitytrends-'):
+def load_mobility_data(smooth = False, smoothsize = 7, apple_mobility_url_base = 'https://covid19-static.cdn-apple.com/covid19-mobility-data/2021HotfixDev25/v3/en-us/applemobilitytrends-'):
 	"""
 	Load Apple and Google mobility data. Downloadable from:
 
@@ -1705,7 +1705,8 @@ def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 5):
 	ln2 = ax1.plot(df_prevalence_pred.index, df_prevalence_pred['Prev_pred'], label = f'Linear prediction ($R^2 = {r_squared:0.03f}$)', color = betterorange)
 
 	#also plot government response
-	ln3 = ax2.plot(df_response.index, df_response['StringencyIndex'], label = 'Stringency index', color = betterblack)
+	df_response_plot = df_response.loc[df_response.index <= df_prevalence_pred.index[-1]]
+	ln3 = ax2.plot(df_response_plot.index, df_response_plot['StringencyIndex'], label = 'Stringency index', color = betterblack)
 
 	ax1.grid(linestyle = ':')
 
@@ -1736,24 +1737,21 @@ def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 5):
 def main():
 	# government_response_results_simple()
 
-	# plot_superspreader_events()
-
-	# estimate_recent_R(enddate_train = '2020-10-28')
-
-	# estimate_recent_prevalence(enddate_train = '2020-11-01')
-
-	# plot_prevalence_R()
-
-	# plot_mobility()
-
-	# plot_daily_results()
-
-	plot_sewage()
-
 	# plot_hospitalization()
 
 	# stringency_R_correlation()
 
+	# plot_superspreader_events()
+
+	# estimate_recent_R(enddate_train = '2020-10-28')
+
+	estimate_recent_prevalence(enddate_train = '2020-11-01')
+
+	# plot_prevalence_R()
+
+	# plot_mobility()
+	# plot_daily_results()
+	# plot_sewage()
 	# plot_individual_data()
 
 if __name__ == '__main__':
