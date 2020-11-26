@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import matplotlib.colors as mcolors
 import matplotlib.cm as cmx
+# import matplotlib.patches as mpatches
 
 import urllib.request
 from urllib.error import HTTPError
@@ -773,6 +774,32 @@ def dataframes_to_NDarray(df, columns):
 
 	return X
 
+def get_period_dates(periodtype):
+	"""
+	Get date ranges of certain important periods, like school closures, vacations etc
+	"""
+
+	if periodtype.lower() == 'autumn break':
+		return np.array(['2020-10-10', '2020-10-24'], dtype = np.datetime64)
+	elif periodtype.lower() == 'school closure':
+		return np.array(['2020-03-20', '2020-08-24'], dtype = np.datetime64)
+	else:
+		raise ValueError('Incorrect period type given')
+
+def shade_region(ax, dates, colour = 'black', alpha = 0.2, label = None):
+	"""
+	Shade a region in a matplotlib graph
+	"""
+	xlims = ax.get_xlim()
+	ylims = ax.get_ylim()
+
+	ax.fill([dates[0], dates[1], dates[1], dates[0]],
+			[ylims[0], ylims[0], ylims[1], ylims[1]],
+			alpha = alpha, edgecolor = 'none', facecolor = colour, label = label)
+
+	ax.set_xlim(xlims)
+	ax.set_ylim(ylims)
+
 
 def plot_prevalence_R():
 	df_prevalence, df_R0 = load_prevalence_R0_data()
@@ -1217,11 +1244,17 @@ def plot_cluster_change():
 	for i, key in enumerate(plot_columns.keys()):
 		ax.plot(df_clusters.index, df_clusters[key], label = plot_columns[key], color = scalarMap.to_rgba(i))
 
+	#also indicate school closures etc
+	autumn_break_dates = get_period_dates('autumn break')
+	shade_region(ax, autumn_break_dates, label = 'School closure/vacations')
+	school_closure_dates = get_period_dates('school closure')
+	shade_region(ax, school_closure_dates)
+
 	ax.set_ylabel('Number of clusters')
 	ax.set_title('Number of COVID-19 clusters in different settings per week')
 
 	ax.grid(linestyle = ':')
-	ax.legend(loc = 'best', prop = {'size': 7})
+	ax.legend(loc = 'best', prop = {'size': 6.5})
 
 	fig.autofmt_xdate()
 	myfmt = mdates.DateFormatter('%d-%m-%Y')
