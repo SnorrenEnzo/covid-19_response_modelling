@@ -700,7 +700,7 @@ def load_cluster_data():
 	df_clusters = pd.get_dummies(df_clusters['Setting']).reindex(columns = all_settings, fill_value = 0)
 
 	#then group by week
-	df_clusters = df_clusters.groupby([pd.Grouper(freq = 'W-MON')])[all_settings].sum().reset_index().sort_index()#.sort_values('Date')
+	df_clusters = df_clusters.groupby([pd.Grouper(freq = 'W-MON')])[all_settings].sum().reset_index().sort_index()
 
 	df_clusters.set_index('Date', inplace = True)
 
@@ -872,6 +872,10 @@ def plot_prevalence_R():
 	df_R0 = df_R0.loc[df_R0.index > startdate]
 	df_response = df_response.loc[df_response.index > startdate]
 
+	print('----\nLatest data')
+	print(f'Prevalence: {df_prevalence.loc[df_prevalence["prev_avg"].notnull()].index[-1]}')
+	print(f'R: {df_R0.loc[df_R0["Rt_avg"].notnull()].index[-1]}')
+	print('----')
 
 	fig, ax1 = plt.subplots()
 	ax2 = ax1.twinx()
@@ -977,8 +981,6 @@ def plot_sewage():
 
 	df_sewage = df_sewage.loc[df_sewage.index > '2020-02-05']
 
-	print(df_sewage.tail())
-
 	fig, ax1 = plt.subplots()
 	ax2 = ax1.twinx()
 
@@ -986,6 +988,8 @@ def plot_sewage():
 
 	ax2.scatter(df_sewage.index, df_sewage['RNA_flow_per_100000'], color = betterorange, label = 'Average RNA abundance', alpha = 0.6, s = 5)
 	ln2 = ax2.plot(df_sewage.index, df_sewage['RNA_flow_smooth'], color = betterorange, label = 'Average RNA abundance smoothed')
+
+	indicate_school_closed(ax2)
 
 	ax1.xaxis.set_tick_params(rotation = 45)
 
@@ -1259,6 +1263,8 @@ def plot_individual_data(use_agegroups = True):
 			ax.legend(loc = 'best', title = 'Age group')
 
 			ax.grid(linestyle = ':')
+
+			indicate_school_closed(ax)
 
 			#fix the date labels
 			ax.set_xticks(pd.date_range(np.min(df_individual.index), np.max(df_individual.index), freq = '14D', format = '%d-%m-%Y').to_series())
@@ -1946,24 +1952,19 @@ def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 5):
 
 def main():
 	# government_response_results_simple()
-
 	# plot_hospitalization()
-
 	# stringency_R_correlation()
-
 	# plot_superspreader_events()
 
-	estimate_recent_R(enddate_train = '2020-10-28')
-
-	estimate_recent_prevalence(enddate_train = '2020-11-01')
-
 	# plot_prevalence_R()
-
 	# plot_mobility()
 	# plot_daily_results()
 	# plot_sewage()
 	# plot_individual_data()
 	# plot_cluster_change()
+
+	# estimate_recent_R(enddate_train = '2020-11-06')
+	estimate_recent_prevalence(enddate_train = '2020-11-10')
 
 if __name__ == '__main__':
 	main()
