@@ -61,6 +61,146 @@ def downloadSave(url, file_name, check_file_exists = False):
 
 		return True
 
+def average_kernel(size = 7):
+	return np.ones(size)/size
+
+def get_mean_mu(df_prevalence, df_deaths):
+	#slice the dD/dt between dates
+	mask = (df_deaths.index > '2020-02-27') & (df_deaths.index <= '2020-08-10')
+	df_deaths = df_deaths.loc[mask]
+
+	#do the same for the prevalence I
+	mask = (df_prevalence.index > '2020-02-27') & (df_prevalence.index <= '2020-08-10')
+	df_prevalence = df_prevalence.loc[mask]
+
+	df_mu = df_deaths[['Amount']].merge(df_prevalence[['prev_avg']], right_index = True, left_index = True)
+
+	#now calculate the mortality rate per unit time
+	df_mu['mu'] = df_mu['Amount']/df_mu['prev_avg'] #day^-1
+
+	fig, ax = plt.subplots()
+
+	ax.plot(df_mu.index, df_mu['mu'])
+
+	ax.set_ylabel(r'Mortality rate per unit time ($\mu$) [day$^-1$]')
+	ax.set_title('Change in COVID-19 mortality rate per unit time ')
+
+	ax.grid(linestyle = ':')
+
+	plt.savefig('mu_change_NL.png', dpi = 200, bbox_inches = 'tight')
+	plt.close()
+
+	#determine average between april and june
+	mask = (df_mu.index > '2020-04-01') & (df_mu.index <= '2020-06-01')
+	mu_mean = np.mean(df_mu.loc[mask]["mu"])
+	print(f'Mean mu: {mu_mean}')
+
+	return mu_mean
+
+def exponential_model(nE_0, R0, t, tau):
+	return nE_0 * R0**(t/tau)
+
+def linear_model(x, a, b):
+	return a*x + b
+
+def three_variables_linear_model(xdata, a, b, c, d):
+	return a*xdata[0] + b*xdata[1] + c*xdata[2] + d
+
+def fit_model(model, xdata, ydata, p0 = None, sigma = None):
+	#returns the best values for the parameters of the model in the array popt
+	#the array pcov contains the estimated covariance of popt
+	#p0 are the values for the variables it will start to look
+	popt, pcov = curve_fit(model, xdata, ydata, p0 = p0, sigma = sigma)
+	#Then the standard deviation is given by:
+	perr = np.sqrt(np.diag(pcov))
+	#get the residuals:
+	residuals = ydata- model(xdata, *popt)
+	#to get R^2:
+	ss_res = np.sum(residuals**2)
+	ss_tot = np.sum((ydata-np.mean(ydata))**2)
+	r_squared = 1 - (ss_res / ss_tot)
+
+	return popt, perr, r_squared
+
+def dataframes_to_NDarray(df, columns):
+	X = np.zeros((len(df), len(columns)))
+	for i in range(len(columns)):
+		X[:,i] = np.array(df[columns[i]])
+
+	return X
+
+def get_period_dates(periodtype):
+	"""
+	Get date ranges of certain important periods, like school closures, vacations etc
+	"""
+
+	if periodtype.lower() == 'autumn break':
+		return np.array(['2020-10-10', '2020-10-24'], dtype = np.datetime64)
+	elif periodtype.lower() == 'school closure':
+		return np.array(['2020-03-20', '2020-08-24'], dtype = np.datetime64)
+	else:
+		raise ValueError('Incorrect period type given')
+
+def shade_region(ax, dates, colour = 'black', alpha = 0.2, label = None):
+	"""
+	Shade a region in a matplotlib graph
+	"""
+	xlims = ax.get_xlim()
+	ylims = ax.get_ylim()
+
+	ax.fill([dates[0], dates[1], dates[1], dates[0]],
+			[ylims[0], ylims[0], ylims[1], ylims[1]],
+			alpha = alpha, edgecolor = 'none', facecolor = colour, label = label)
+
+	ax.set_xlim(xlims)
+	ax.set_ylim(ylims)
+
+def indicate_school_closed(ax):
+	autumn_break_dates = get_period_dates('autumn break')
+	shade_region(ax, autumn_break_dates, label = 'School closure/vacations')
+	school_closure_dates = get_period_dates('school closure')
+	shade_region(ax, school_closure_dates)
+
+def extrapolate_dataframe(df, enddate, base_period = 7):
+	"""
+	Extrapolate data in a dataframe with a date index
+	"""
+	#select on which section we want to extrapolate (up to 3 weeks back)
+	start_extrapolation_pred = df.index[-1]
+	start_extrapolation = start_extrapolation_pred - pd.Timedelta(f'{base_period} day')
+	df_extrap_train = df.loc[df.index > start_extrapolation]
+	#get a numerical index
+	X_train = df_extrap_train.reset_index().drop('Date', 1).index.astype(float).values
+	Y_train = df_extrap_train['Number_of_tests'].values
+
+	## train model
+	clf = LinearRegression()
+	clf.fit(X_train[:,None], Y_train)
+
+	## now make the proper array
+	#set the enddate
+	df.loc[enddate] = [np.nan, np.nan, 1]
+	#add dates in between
+	df = df.resample('1d').mean()
+
+	#extract the rows for extrapolation
+	df_extrap_pred = df.loc[df.index > start_extrapolation]
+	selectindex = (df_extrap_pred.index > start_extrapolation_pred)
+	#get numerical index
+	X_pred = df_extrap_pred.reset_index().drop('Date', 1).index.astype(float).values[selectindex]
+	#get predictions
+	df_temp = pd.DataFrame(data = clf.predict(X_pred[:,None]), index = df_extrap_pred.loc[df_extrap_pred.index > start_extrapolation_pred].index, columns = ['Number_of_tests'])
+	#indicate that these values are extrapolated
+	df_temp['Extrapolated'] = 1
+
+	#now update the interpolated array
+	df.update(df_temp)
+
+	df = df.astype({'Extrapolated': 'bool'})
+
+	return df
+
+
 def load_prevalence_R0_data():
 	"""
 	Load data and return as estimated number of infectious people per million
@@ -170,7 +310,7 @@ def load_government_response_data():
 
 	return df_response
 
-def load_mobility_data(smooth = False, smoothsize = 7, apple_mobility_url_base = 'https://covid19-static.cdn-apple.com/covid19-mobility-data/2022HotfixDev18/v3/en-us/applemobilitytrends-'):
+def load_mobility_data(smooth = False, smoothsize = 7, apple_mobility_url_base = 'https://covid19-static.cdn-apple.com/covid19-mobility-data/2022HotfixDev20/v3/en-us/applemobilitytrends-'):
 	"""
 	Load Apple and Google mobility data. Downloadable from:
 
@@ -342,7 +482,7 @@ def load_daily_covid(correct_for_delay = False):
 
 	return df_daily_covid
 
-def load_number_of_tests(enddate = None):
+def load_number_of_tests(enddate = None, ignore_last_datapoint = False):
 	"""
 	Data source:
 	https://www.rivm.nl/documenten/wekelijkse-update-epidemiologische-situatie-covid-19-in-nederland
@@ -366,7 +506,7 @@ def load_number_of_tests(enddate = None):
 	df_n_tests['Number_of_tests'] /= 7
 
 	#and ignore last known date (due to incomplete data) if given a final date
-	if enddate != None:
+	if ignore_last_datapoint and enddate != None:
 		df_n_tests = df_n_tests[:-1]
 
 	#resample to once a day
@@ -383,38 +523,7 @@ def load_number_of_tests(enddate = None):
 
 	#now if the enddate is given, we also want to extrapolate
 	if enddate != None:
-		#select on which section we want to extrapolate (up to 3 weeks back)
-		start_extrapolation_pred = df_n_tests.index[-1]
-		start_extrapolation = start_extrapolation_pred - pd.Timedelta(f'7 day')
-		df_extrap_train = df_n_tests.loc[df_n_tests.index > start_extrapolation]
-		#get a numerical index
-		X_train = df_extrap_train.reset_index().drop('Date', 1).index.astype(float).values
-		Y_train = df_extrap_train['Number_of_tests'].values
-
-		## train model
-		clf = LinearRegression()
-		clf.fit(X_train[:,None], Y_train)
-
-		## now make the proper array
-		#set the enddate
-		df_n_tests.loc[enddate] = [np.nan, np.nan, 1]
-		#add dates in between
-		df_n_tests = df_n_tests.resample('1d').mean()
-
-		#extract the rows for extrapolation
-		df_extrap_pred = df_n_tests.loc[df_n_tests.index > start_extrapolation]
-		selectindex = (df_extrap_pred.index > start_extrapolation_pred)
-		#get numerical index
-		X_pred = df_extrap_pred.reset_index().drop('Date', 1).index.astype(float).values[selectindex]
-		#get predictions
-		df_temp = pd.DataFrame(data = clf.predict(X_pred[:,None]), index = df_extrap_pred.loc[df_extrap_pred.index > start_extrapolation_pred].index, columns = ['Number_of_tests'])
-		#indicate that these values are extrapolated
-		df_temp['Extrapolated'] = 1
-
-		#now update the interpolated array
-		df_n_tests.update(df_temp)
-
-		df_n_tests = df_n_tests.astype({'Extrapolated': 'bool'})
+		df_n_tests = extrapolate_dataframe(df_n_tests, enddate, base_period = 7)
 
 	return df_n_tests
 
@@ -761,106 +870,18 @@ def load_weather_data(smooth = False):
 
 	return df_weather
 
+def load_behaviour_data():
+	behaviour_url = 'https://data.rivm.nl/covid-19/COVID-19_gedrag.csv'
+	behaviour_fname = 'COVID-19_gedrag.csv'
 
-def average_kernel(size = 7):
-	return np.ones(size)/size
+	downloadSave(behaviour_url, behaviour_fname, check_file_exists = True)
 
-def get_mean_mu(df_prevalence, df_deaths):
-	#slice the dD/dt between dates
-	mask = (df_deaths.index > '2020-02-27') & (df_deaths.index <= '2020-08-10')
-	df_deaths = df_deaths.loc[mask]
+	df_behaviour = pd.read_csv(behaviour_fname, sep = ';')
 
-	#do the same for the prevalence I
-	mask = (df_prevalence.index > '2020-02-27') & (df_prevalence.index <= '2020-08-10')
-	df_prevalence = df_prevalence.loc[mask]
+	print(df_behaviour)
 
-	df_mu = df_deaths[['Amount']].merge(df_prevalence[['prev_avg']], right_index = True, left_index = True)
+	return df_behaviour
 
-	#now calculate the mortality rate per unit time
-	df_mu['mu'] = df_mu['Amount']/df_mu['prev_avg'] #day^-1
-
-	fig, ax = plt.subplots()
-
-	ax.plot(df_mu.index, df_mu['mu'])
-
-	ax.set_ylabel(r'Mortality rate per unit time ($\mu$) [day$^-1$]')
-	ax.set_title('Change in COVID-19 mortality rate per unit time ')
-
-	ax.grid(linestyle = ':')
-
-	plt.savefig('mu_change_NL.png', dpi = 200, bbox_inches = 'tight')
-	plt.close()
-
-	#determine average between april and june
-	mask = (df_mu.index > '2020-04-01') & (df_mu.index <= '2020-06-01')
-	mu_mean = np.mean(df_mu.loc[mask]["mu"])
-	print(f'Mean mu: {mu_mean}')
-
-	return mu_mean
-
-def exponential_model(nE_0, R0, t, tau):
-	return nE_0 * R0**(t/tau)
-
-def linear_model(x, a, b):
-	return a*x + b
-
-def three_variables_linear_model(xdata, a, b, c, d):
-	return a*xdata[0] + b*xdata[1] + c*xdata[2] + d
-
-def fit_model(model, xdata, ydata, p0 = None, sigma = None):
-	#returns the best values for the parameters of the model in the array popt
-	#the array pcov contains the estimated covariance of popt
-	#p0 are the values for the variables it will start to look
-	popt, pcov = curve_fit(model, xdata, ydata, p0 = p0, sigma = sigma)
-	#Then the standard deviation is given by:
-	perr = np.sqrt(np.diag(pcov))
-	#get the residuals:
-	residuals = ydata- model(xdata, *popt)
-	#to get R^2:
-	ss_res = np.sum(residuals**2)
-	ss_tot = np.sum((ydata-np.mean(ydata))**2)
-	r_squared = 1 - (ss_res / ss_tot)
-
-	return popt, perr, r_squared
-
-def dataframes_to_NDarray(df, columns):
-	X = np.zeros((len(df), len(columns)))
-	for i in range(len(columns)):
-		X[:,i] = np.array(df[columns[i]])
-
-	return X
-
-def get_period_dates(periodtype):
-	"""
-	Get date ranges of certain important periods, like school closures, vacations etc
-	"""
-
-	if periodtype.lower() == 'autumn break':
-		return np.array(['2020-10-10', '2020-10-24'], dtype = np.datetime64)
-	elif periodtype.lower() == 'school closure':
-		return np.array(['2020-03-20', '2020-08-24'], dtype = np.datetime64)
-	else:
-		raise ValueError('Incorrect period type given')
-
-def shade_region(ax, dates, colour = 'black', alpha = 0.2, label = None):
-	"""
-	Shade a region in a matplotlib graph
-	"""
-	xlims = ax.get_xlim()
-	ylims = ax.get_ylim()
-
-	ax.fill([dates[0], dates[1], dates[1], dates[0]],
-			[ylims[0], ylims[0], ylims[1], ylims[1]],
-			alpha = alpha, edgecolor = 'none', facecolor = colour, label = label)
-
-	ax.set_xlim(xlims)
-	ax.set_ylim(ylims)
-
-def indicate_school_closed(ax):
-	autumn_break_dates = get_period_dates('autumn break')
-	shade_region(ax, autumn_break_dates, label = 'School closure/vacations')
-	school_closure_dates = get_period_dates('school closure')
-	shade_region(ax, school_closure_dates)
 
 def plot_prevalence_R():
 	df_prevalence, df_R0 = load_prevalence_R0_data()
@@ -1044,7 +1065,7 @@ def plot_daily_results():
 	df_daily_covid = df_daily_covid.loc[df_daily_covid.index > startdate]
 	df_response = df_response.loc[df_response.index > startdate]
 
-	print(df_daily_covid['Positivity_ratio'].tail())
+	print(df_daily_covid.tail())
 
 
 	### make the plot
@@ -1958,15 +1979,17 @@ def main():
 	# stringency_R_correlation()
 	# plot_superspreader_events()
 
-	plot_prevalence_R()
-	plot_mobility()
+	# plot_prevalence_R()
+	# plot_mobility()
 	plot_daily_results()
-	plot_sewage()
-	plot_individual_data()
-	plot_cluster_change()
+	# plot_sewage()
+	# plot_individual_data()
+	# plot_cluster_change()
 
-	estimate_recent_R(enddate_train = '2020-11-12')
-	estimate_recent_prevalence(enddate_train = '2020-11-17')
+	# load_behaviour_data()
+
+	# estimate_recent_R(enddate_train = '2020-11-12')
+	# estimate_recent_prevalence(enddate_train = '2020-11-17')
 
 if __name__ == '__main__':
 	main()
