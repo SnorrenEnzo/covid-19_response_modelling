@@ -161,14 +161,25 @@ def indicate_school_closed(ax):
 	school_closure_dates = get_period_dates('school closure')
 	shade_region(ax, school_closure_dates)
 
-def extrapolate_dataframe(df, enddate, base_period = 7):
+def extrapolate_dataframe(df, colname, date_to_extrap, base_period = 7):
 	"""
 	Extrapolate data in a dataframe with a date index
 	"""
+	#check if we extrapolate on the front or back of the data sequence
+	extrap_front = False
+	if np.datetime64(date_to_extrap) < np.datetime64(df.index[0]):
+		extrap_front = True
+
 	#select on which section we want to extrapolate (up to 3 weeks back)
-	start_extrapolation_pred = df.index[-1]
-	start_extrapolation = start_extrapolation_pred - pd.Timedelta(f'{base_period} day')
-	df_extrap_train = df.loc[df.index > start_extrapolation]
+	if extrap_front:
+		start_extrapolation_pred = df.index[0]
+		start_extrapolation = start_extrapolation_pred + pd.Timedelta(f'{base_period} day')
+		df_extrap_train = df.loc[df.index < start_extrapolation]
+	else:
+		start_extrapolation_pred = df.index[-1]
+		start_extrapolation = start_extrapolation_pred - pd.Timedelta(f'{base_period} day')
+		df_extrap_train = df.loc[df.index > start_extrapolation]
+
 	#get a numerical index
 	X_train = df_extrap_train.reset_index().drop('Date', 1).index.astype(float).values
 	Y_train = df_extrap_train['Number_of_tests'].values
@@ -179,17 +190,29 @@ def extrapolate_dataframe(df, enddate, base_period = 7):
 
 	## now make the proper array
 	#set the enddate
-	df.loc[enddate] = [np.nan, np.nan, 1]
+	df.loc[date_to_extrap] = [np.nan, np.nan, 1]
 	#add dates in between
 	df = df.resample('1d').mean()
 
 	#extract the rows for extrapolation
-	df_extrap_pred = df.loc[df.index > start_extrapolation]
-	selectindex = (df_extrap_pred.index > start_extrapolation_pred)
+	if extrap_front:
+		df_extrap_pred = df.loc[df.index < start_extrapolation]
+		selectindex = (df_extrap_pred.index < start_extrapolation_pred)
+	else:
+		df_extrap_pred = df.loc[df.index > start_extrapolation]
+		selectindex = (df_extrap_pred.index > start_extrapolation_pred)
+
 	#get numerical index
 	X_pred = df_extrap_pred.reset_index().drop('Date', 1).index.astype(float).values[selectindex]
+
+	#re-select index
+	if extrap_front:
+		selectindex = (df_extrap_pred.index < start_extrapolation_pred)
+	else:
+		selectindex = (df_extrap_pred.index > start_extrapolation_pred)
+
 	#get predictions
-	df_temp = pd.DataFrame(data = clf.predict(X_pred[:,None]), index = df_extrap_pred.loc[df_extrap_pred.index > start_extrapolation_pred].index, columns = ['Number_of_tests'])
+	df_temp = pd.DataFrame(data = clf.predict(X_pred[:,None]), index = df_extrap_pred.loc[selectindex].index, columns = [colname])
 	#indicate that these values are extrapolated
 	df_temp['Extrapolated'] = 1
 
@@ -523,7 +546,7 @@ def load_number_of_tests(enddate = None, ignore_last_datapoint = False):
 
 	#now if the enddate is given, we also want to extrapolate
 	if enddate != None:
-		df_n_tests = extrapolate_dataframe(df_n_tests, enddate, base_period = 7)
+		df_n_tests = extrapolate_dataframe(df_n_tests, 'Number_of_tests', enddate, base_period = 7)
 
 	return df_n_tests
 
@@ -870,17 +893,80 @@ def load_weather_data(smooth = False):
 
 	return df_weather
 
-def load_behaviour_data():
+def load_behaviour_data(startdate, enddate):
 	behaviour_url = 'https://data.rivm.nl/covid-19/COVID-19_gedrag.csv'
 	behaviour_fname = 'COVID-19_gedrag.csv'
 
 	downloadSave(behaviour_url, behaviour_fname, check_file_exists = True)
 
-	df_behaviour = pd.read_csv(behaviour_fname, sep = ';')
+	loadcols = [
+	'Date_of_measurement',
+	'Region_name',
+	'Subgroup_category',
+	'Indicator_category',
+	'Indicator',
+	'Figure_type',
+	'Value'#,
+	# 'Lower_limit',
+	# 'Upper_limit'
+	]
 
-	print(df_behaviour)
+	df_behaviour = pd.read_csv(behaviour_fname, sep = ';', usecols = loadcols)
 
-	return df_behaviour
+	df_behaviour = df_behaviour.rename(columns = {'Date_of_measurement': 'Date'})
+
+	df_behaviour['Date'] = pd.to_datetime(df_behaviour['Date'], format = '%Y-%m-%d %H:%M:%S')
+	df_behaviour.set_index('Date', inplace = True)
+
+	### start filtering out undesired rows
+	#select only country wide
+	df_behaviour = df_behaviour.loc[df_behaviour.Region_name == 'Nederland']
+	#select all subgroups
+	df_behaviour = df_behaviour.loc[df_behaviour.Subgroup_category == 'Alle']
+	#select on data on if people follow the rules
+	df_behaviour = df_behaviour.loc[df_behaviour.Indicator_category == 'Naleving']
+	#only want percentages
+	df_behaviour = df_behaviour.loc[df_behaviour.Figure_type == 'Percentage']
+
+	#remove the filter columns
+	df_behaviour = df_behaviour.drop(['Figure_type', 'Region_name', 'Subgroup_category', 'Indicator_category'], axis=1)
+
+	#get the different indicators as separate columns
+	all_indicators = np.sort(df_behaviour['Indicator'].unique())
+	df_behaviour_incols = pd.get_dummies(df_behaviour['Indicator']).reindex(columns = all_indicators, fill_value = 0)
+
+	df_behaviour_incols.update(df_behaviour_incols.mul(df_behaviour.Value, 0))
+
+	#then group by
+	df_behaviour_incols = df_behaviour_incols.groupby(['Date'])[all_indicators].sum().reset_index().sort_index()#.sort_values('Date')
+	df_behaviour_incols.set_index('Date', inplace = True)
+
+	#replace unreasonably low values with nans
+	df_behaviour_incols[df_behaviour_incols < 2] = np.nan
+
+	#interpolate
+	#resample to once a day
+	df_behaviour_incols = df_behaviour_incols.resample('1d').mean()
+
+	#then interpolate
+	df_behaviour_incols = df_behaviour_incols.interpolate(method = 'linear')
+
+	#pre-extrapolate columns with nans
+	for col in df_behaviour_incols.columns:
+		if np.sum(df_behaviour_incols[col].isna()) > 0:
+
+			print(col)
+
+	### now we need to perform imputation, filling in the blanks before the
+	### survey starts
+	#extrapolate at the start
+	if np.datetime64(startdate) < np.datetime64(df_behaviour_incols.index[0]):
+
+		pass
+
+	# print(df_behaviour_incols)
+
+	return df_behaviour_incols
 
 
 def plot_prevalence_R():
@@ -1034,7 +1120,7 @@ def plot_daily_results():
 	Plot up to date test results
 	"""
 	df_daily_covid = load_daily_covid(correct_for_delay = False)
-	df_n_tests = load_number_of_tests(enddate = df_daily_covid.index.values[-1])
+	df_n_tests = load_number_of_tests(enddate = df_daily_covid.index.values[-1], ignore_last_datapoint = True)
 
 	df_response = load_government_response_data()
 
@@ -1986,7 +2072,7 @@ def main():
 	# plot_individual_data()
 	# plot_cluster_change()
 
-	# load_behaviour_data()
+	# load_behaviour_data('2020-07-01', '2020-12-11')
 
 	# estimate_recent_R(enddate_train = '2020-11-12')
 	# estimate_recent_prevalence(enddate_train = '2020-11-17')
