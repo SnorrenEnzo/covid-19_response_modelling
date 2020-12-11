@@ -165,6 +165,9 @@ def extrapolate_dataframe(df, colname, date_to_extrap, base_period = 7):
 	"""
 	Extrapolate data in a dataframe with a date index
 	"""
+	#indicate which part was extrapolated
+	df['Extrapolated'] = 0
+
 	#check if we extrapolate on the front or back of the data sequence
 	extrap_front = False
 	if np.datetime64(date_to_extrap) < np.datetime64(df.index[0]):
@@ -180,17 +183,17 @@ def extrapolate_dataframe(df, colname, date_to_extrap, base_period = 7):
 		start_extrapolation = start_extrapolation_pred - pd.Timedelta(f'{base_period} day')
 		df_extrap_train = df.loc[df.index > start_extrapolation]
 
-	#get a numerical index
-	X_train = df_extrap_train.reset_index().drop('Date', 1).index.astype(float).values
-	Y_train = df_extrap_train['Number_of_tests'].values
+	#get a numerical index in epoch time
+	X_train = df_extrap_train.index.astype('int64')
+	Y_train = df_extrap_train[colname].values
 
 	## train model
 	clf = LinearRegression()
 	clf.fit(X_train[:,None], Y_train)
 
 	## now make the proper array
-	#set the enddate
-	df.loc[date_to_extrap] = [np.nan, np.nan, 1]
+	#init the enddate
+	df.loc[date_to_extrap] = [np.nan]*(len(df.columns) - 1) + [1]
 	#add dates in between
 	df = df.resample('1d').mean()
 
@@ -203,7 +206,7 @@ def extrapolate_dataframe(df, colname, date_to_extrap, base_period = 7):
 		selectindex = (df_extrap_pred.index > start_extrapolation_pred)
 
 	#get numerical index
-	X_pred = df_extrap_pred.reset_index().drop('Date', 1).index.astype(float).values[selectindex]
+	X_pred = df_extrap_pred.index.astype('int64')[selectindex]
 
 	#re-select index
 	if extrap_front:
@@ -540,9 +543,6 @@ def load_number_of_tests(enddate = None, ignore_last_datapoint = False):
 
 	#then interpolate/extrapolate
 	df_n_tests['Number_of_tests'] = df_n_tests['Number_of_tests'].interpolate(method = 'linear')
-
-	#indicate which part was extrapolated
-	df_n_tests['Extrapolated'] = 0
 
 	#now if the enddate is given, we also want to extrapolate
 	if enddate != None:
@@ -955,7 +955,9 @@ def load_behaviour_data(startdate, enddate):
 	for col in df_behaviour_incols.columns:
 		if np.sum(df_behaviour_incols[col].isna()) > 0:
 
-			print(col)
+			df_sub = extrapolate_dataframe(df_behaviour_incols.loc[df_behaviour_incols[col].notna()][[col]], col, df_behaviour_incols.index[0], base_period = 7)
+
+			print(df_sub)
 
 	### now we need to perform imputation, filling in the blanks before the
 	### survey starts
@@ -1120,7 +1122,7 @@ def plot_daily_results():
 	Plot up to date test results
 	"""
 	df_daily_covid = load_daily_covid(correct_for_delay = False)
-	df_n_tests = load_number_of_tests(enddate = df_daily_covid.index.values[-1], ignore_last_datapoint = True)
+	df_n_tests = load_number_of_tests(enddate = df_daily_covid.index.values[-1], ignore_last_datapoint = False)
 
 	df_response = load_government_response_data()
 
@@ -2067,12 +2069,12 @@ def main():
 
 	# plot_prevalence_R()
 	# plot_mobility()
-	plot_daily_results()
+	# plot_daily_results()
 	# plot_sewage()
 	# plot_individual_data()
 	# plot_cluster_change()
 
-	# load_behaviour_data('2020-07-01', '2020-12-11')
+	load_behaviour_data('2020-07-01', '2020-12-11')
 
 	# estimate_recent_R(enddate_train = '2020-11-12')
 	# estimate_recent_prevalence(enddate_train = '2020-11-17')
