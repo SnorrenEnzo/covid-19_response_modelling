@@ -1,7 +1,8 @@
 ## Modelling the outcome of Dutch government coronavirus response
 
 ### TODO:
-- ...
+- Add enquete data to predictor input: [RIVM](https://data.rivm.nl/geonetwork/srv/dut/catalog.search#/metadata/8a72d78a-fcf8-4882-b0ab-cd594961a267)
+- Check all predictor input variables for covariance with R and prevalence
 
 ### Data sources
 
@@ -11,6 +12,7 @@
 - Each case of positive test, with first day of illness, age etc: [link](https://data.rivm.nl/geonetwork/srv/dut/catalog.search#/metadata/2c4357c8-76e4-4662-9574-1deb8a73f724)
 - Reproductive number: [link](https://data.rivm.nl/covid-19/COVID-19_reproductiegetal.json)
 - More raw data: [link](https://coronadashboard.rijksoverheid.nl/verantwoording)
+- Behaviour studies: [link](https://data.rivm.nl/geonetwork/srv/dut/catalog.search#/metadata/8a72d78a-fcf8-4882-b0ab-cd594961a267?tab=relations)
 
 Weekly update [link](https://www.rivm.nl/coronavirus-covid-19/actueel) with:
 - Number of tests performed per week

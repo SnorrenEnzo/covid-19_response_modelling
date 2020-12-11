@@ -896,6 +896,12 @@ def load_weather_data(smooth = False):
 	return df_weather
 
 def load_behaviour_data(startdate, enddate):
+	"""
+	Load data on questionnaires about how much people follow the COVID-19 rules.
+	https://data.rivm.nl/geonetwork/srv/dut/catalog.search#/metadata/8a72d78a-fcf8-4882-b0ab-cd594961a267?tab=relations
+
+	startdate, enddate as np.datetime64.
+	"""
 	behaviour_url = 'https://data.rivm.nl/covid-19/COVID-19_gedrag.csv'
 	behaviour_fname = 'COVID-19_gedrag.csv'
 
@@ -965,18 +971,18 @@ def load_behaviour_data(startdate, enddate):
 	### now we need to perform imputation, filling in the blanks before the
 	### survey starts
 	#extrapolate at the start
-	if np.datetime64(startdate) < np.datetime64(df_behaviour_incols.index[0]):
+	if startdate < np.datetime64(df_behaviour_incols.index[0]):
 		df_sub = pd.DataFrame()
 		for col in df_behaviour_incols.columns:
-			df_sub[col] = extrapolate_dataframe(df_behaviour_incols[[col]], col, np.datetime64(startdate), base_period = 7)[col]
+			df_sub[col] = extrapolate_dataframe(df_behaviour_incols[[col]], col, startdate, base_period = 7)[col]
 
 		df_behaviour_incols = df_sub
 
 	#extrapolate at the end
-	if np.datetime64(enddate) > np.datetime64(df_behaviour_incols.index[0]):
+	if enddate > np.datetime64(df_behaviour_incols.index[0]):
 		df_sub = pd.DataFrame()
 		for col in df_behaviour_incols.columns:
-			df_sub[col] = extrapolate_dataframe(df_behaviour_incols[[col]], col, np.datetime64(enddate), base_period = 7)[col]
+			df_sub[col] = extrapolate_dataframe(df_behaviour_incols[[col]], col, enddate, base_period = 7)[col]
 
 		df_behaviour_incols = df_sub
 
@@ -1641,6 +1647,7 @@ def estimate_recent_R(enddate_train = '2020-10-25'):
 	"""
 	print(f'WARNING: end date for R training set is {enddate_train}')
 
+	startdate_train = '2020-06-01'
 	startdate_pred = '2020-07-01'
 
 	df_prevalence, df_R = load_prevalence_R0_data()
@@ -1662,8 +1669,15 @@ def estimate_recent_R(enddate_train = '2020-10-25'):
 	df_mob_R = df_mob_R.join(df_response, how = 'inner')
 	df_mob_R = df_mob_R.join(df_weather, how = 'inner')
 
+	#only now load the behaviour data as we have to extrapolate this anyhow
+	#and need to get the extrapolation edges
+	# df_behaviour = load_behaviour_data(np.datetime64(startdate_train), np.datetime64(df_mob_R.index[-1]))
+	# print(df_behaviour.columns)
+	# #and also merge this
+	# df_mob_R = df_mob_R.join(df_behaviour, how = 'inner')
+
 	#select date range
-	mask = (df_mob_R.index > '2020-04-01') & (df_mob_R.index <= enddate_train)
+	mask = (df_mob_R.index > startdate_train) & (df_mob_R.index <= enddate_train)
 	df_train = df_mob_R.loc[mask]
 	df_pred = df_mob_R.loc[df_mob_R.index > startdate_pred]
 
@@ -1734,7 +1748,7 @@ def estimate_recent_R(enddate_train = '2020-10-25'):
 			'transit_smooth',
 			'TAvg',
 			'Rad'
-		] + list(df_response.columns)
+		]
 		#get the multiple parameters into a single array
 		X = dataframes_to_NDarray(df_train, best_correlating_metrics)
 		Y = np.array(df_train['Rt_avg'])
@@ -2086,9 +2100,7 @@ def main():
 	# plot_individual_data()
 	# plot_cluster_change()
 
-	load_behaviour_data('2020-07-01', '2020-12-11')
-
-	# estimate_recent_R(enddate_train = '2020-11-12')
+	estimate_recent_R(enddate_train = '2020-11-12')
 	# estimate_recent_prevalence(enddate_train = '2020-11-17')
 
 if __name__ == '__main__':
