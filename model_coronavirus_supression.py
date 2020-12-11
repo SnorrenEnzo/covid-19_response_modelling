@@ -164,13 +164,15 @@ def indicate_school_closed(ax):
 def extrapolate_dataframe(df, colname, date_to_extrap, base_period = 7):
 	"""
 	Extrapolate data in a dataframe with a date index
+
+	date_to_extrap (np.datetime64): date up to which you want to extrapolate to
 	"""
 	#indicate which part was extrapolated
 	df['Extrapolated'] = 0
 
 	#check if we extrapolate on the front or back of the data sequence
 	extrap_front = False
-	if np.datetime64(date_to_extrap) < np.datetime64(df.index[0]):
+	if date_to_extrap < np.datetime64(df.index[0]):
 		extrap_front = True
 
 	#select on which section we want to extrapolate (up to 3 weeks back)
@@ -954,19 +956,29 @@ def load_behaviour_data(startdate, enddate):
 	#pre-extrapolate columns with nans
 	for col in df_behaviour_incols.columns:
 		if np.sum(df_behaviour_incols[col].isna()) > 0:
-
+			#interpolate this one columns
 			df_sub = extrapolate_dataframe(df_behaviour_incols.loc[df_behaviour_incols[col].notna()][[col]], col, df_behaviour_incols.index[0], base_period = 7)
 
-			print(df_sub)
+			#insert back into dataframe
+			df_behaviour_incols[col] = df_sub[col]
 
 	### now we need to perform imputation, filling in the blanks before the
 	### survey starts
 	#extrapolate at the start
 	if np.datetime64(startdate) < np.datetime64(df_behaviour_incols.index[0]):
+		df_sub = pd.DataFrame()
+		for col in df_behaviour_incols.columns:
+			df_sub[col] = extrapolate_dataframe(df_behaviour_incols[[col]], col, np.datetime64(startdate), base_period = 7)[col]
 
-		pass
+		df_behaviour_incols = df_sub
 
-	# print(df_behaviour_incols)
+	#extrapolate at the end
+	if np.datetime64(enddate) > np.datetime64(df_behaviour_incols.index[0]):
+		df_sub = pd.DataFrame()
+		for col in df_behaviour_incols.columns:
+			df_sub[col] = extrapolate_dataframe(df_behaviour_incols[[col]], col, np.datetime64(enddate), base_period = 7)[col]
+
+		df_behaviour_incols = df_sub
 
 	return df_behaviour_incols
 
