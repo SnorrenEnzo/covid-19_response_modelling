@@ -88,7 +88,7 @@ Mortality rate 1/mu
 ### Analysis
 
 #### Impact of humidity
-Predicting the reproductive number R with the following input parameters:
+Predicting the reproductive number R with the following input parameters since 15-6-2020 (starting date at which R measurements became more reliable):
 
 ```
 'retail_recreation_smooth',
@@ -102,17 +102,17 @@ Predicting the reproductive number R with the following input parameters:
 'TAvg'
 ```
 
-Gives a 20% test set R^2 = 0.720. Now to tinker with the data (date of tinkering: 15-12-2020):
-- Removing `TAvg` (average daily temperature) gives a test set R^2 = 0.681.
-- Removing `TAvg` and adding `HumAvg` (average daily humidity) gives a test set R^2 = 0.687.
-- Adding `HumAvg` (and having `TAvg` included too) gives a test set R^2 = 0.726.
+Gives a 20% test set R^2 = 0.851. Now to tinker with the data (date of tinkering: 15-12-2020):
+- Removing `TAvg` (average daily temperature) gives a test set R^2 = 0.841.
+- Removing `TAvg` and adding `HumAvg` (average daily humidity) gives a test set R^2 = 0.842.
+- Adding `HumAvg` (and having `TAvg` included too) gives a test set R^2 = 0.854.
 
-So adding the `HumAvg` parameter "adds" an R^2 of 0.006, barely any impact.
+So adding the `HumAvg` parameter "adds" an R^2 of ~0.003, barely any impact.
 
-However, when looking at the correlation matrix we obtain the following Pearson correlation coefficients for the weather parameters:
-- Average daily solar radiation: 0.054
+When looking at the correlation matrix we obtain the following Pearson correlation coefficients for the weather parameters:
+- Average daily solar radiation: 0.161
 - Average daily temperature: -0.026
-- Average daily relative humidity: 0.112
+- Average daily relative humidity: 0.065
 
 
 ### Literature
