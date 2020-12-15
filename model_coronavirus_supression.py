@@ -1141,11 +1141,16 @@ def plot_sewage():
 	plt.savefig(f'{plotloc}Sewage_measurements.png', dpi = 200, bbox_inches = 'tight')
 	plt.close()
 
-def plot_daily_results():
+def plot_daily_results(use_individual_data = True):
 	"""
 	Plot up to date test results
 	"""
-	df_daily_covid = load_daily_covid(correct_for_delay = False)
+	if use_individual_data:
+		df_daily_covid = load_individual_positive_test_data(load_agegroups = False)
+
+		df_daily_covid = df_daily_covid.rename(columns = {'N_cases': 'Total_reported'})
+	else:
+		df_daily_covid = load_daily_covid(correct_for_delay = False)
 	df_n_tests = load_number_of_tests(enddate = df_daily_covid.index.values[-1], ignore_last_datapoint = False)
 
 	df_response = load_government_response_data()
@@ -1157,17 +1162,27 @@ def plot_daily_results():
 	time_to_test_delay = 3 #days
 	result_delay = 1
 
-	#correct the results to the day of the test
-	df_daily_covid.index = df_daily_covid.index - pd.Timedelta(f'{result_delay} day')
+	if not use_individual_data:
+		#correct the results to the day of the test
+		df_daily_covid.index = df_daily_covid.index - pd.Timedelta(f'{result_delay} day')
 
-	#merge datasets
-	df_daily_covid = df_daily_covid.merge(df_n_tests[['Number_of_tests', 'Extrapolated']], right_index = True, left_index = True)
+		#merge datasets
+		df_daily_covid = df_daily_covid.merge(df_n_tests[['Number_of_tests', 'Extrapolated']], right_index = True, left_index = True)
+
+		#correct the results to the day of infection
+		df_daily_covid.index = df_daily_covid.index - pd.Timedelta(f'{int(incubation_period + time_to_test_delay)} day')
+	else:
+		#shift number of tests to date of disease onset (DDO)
+		df_n_tests.index = df_n_tests.index - pd.Timedelta(f'{int(time_to_test_delay)} day')
+
+		#merge datasets
+		df_daily_covid = df_daily_covid.merge(df_n_tests[['Number_of_tests', 'Extrapolated']], right_index = True, left_index = True)
+
+		#correct the results to the day of infection
+		df_daily_covid.index = df_daily_covid.index - pd.Timedelta(f'{int(incubation_period)} day')
 
 	#determine test positivity rate
 	df_daily_covid['Positivity_ratio'] = df_daily_covid['Total_reported']/df_daily_covid['Number_of_tests']
-
-	#correct the results to the day of infection
-	df_daily_covid.index = df_daily_covid.index - pd.Timedelta(f'{int(incubation_period + time_to_test_delay)} day')
 
 
 	#select second wave of infections
@@ -1217,7 +1232,12 @@ def plot_daily_results():
 	ax1.set_ylim(0)
 	ax2.set_ylim(0)
 
-	plt.savefig(f'{plotloc}Tests_second_wave.png', dpi = 200, bbox_inches = 'tight')
+	if use_individual_data:
+		savename = f'{plotloc}Tests_second_wave_individual_reports.png'
+	else:
+		savename = f'{plotloc}Tests_second_wave_daily_reported.png'
+
+	plt.savefig(savename, dpi = 200, bbox_inches = 'tight')
 	plt.close()
 
 def plot_hospitalization():
@@ -1336,8 +1356,8 @@ def plot_individual_data(use_agegroups = True):
 	df_individual = df_individual.loc[df_individual.index >= '2020-08-01']
 
 	if use_agegroups:
+		### Plot as a heatmap
 		if True:
-			### Plot as a heatmap
 
 			#convert to an image
 			imgdata = np.array(df_individual).T
@@ -1374,6 +1394,7 @@ def plot_individual_data(use_agegroups = True):
 			plt.savefig(f'{plotloc}Individual_testing_data_agegroups_heatmap.png', dpi = 200, bbox_inches = 'tight')
 			plt.close()
 
+		### plot age groups as a line graph
 		if True:
 			smoothscale = 3
 
@@ -1408,6 +1429,24 @@ def plot_individual_data(use_agegroups = True):
 
 			plt.savefig(f'{plotloc}Individual_testing_data_agegroups_line.png', dpi = 200, bbox_inches = 'tight')
 			plt.close()
+	else:
+		### plot simply the number of positive tests per DDO
+		fig, ax = plt.subplots()
+
+		ax.plot(df_individual.index, df_individual.N_cases)
+
+		ax.grid(linestyle = ':')
+
+		ax.set_ylabel('Number of positive tests')
+		ax.set_title('Number of positive tests on date of disease onset')
+
+		fig.autofmt_xdate()
+		myfmt = mdates.DateFormatter('%d-%m-%Y')
+		ax.xaxis.set_major_formatter(myfmt)
+
+		plt.savefig(f'{plotloc}Individual_testing_data_total_cases.png', dpi = 200, bbox_inches = 'tight')
+		plt.close()
+
 
 def plot_cluster_change():
 	"""
@@ -2097,9 +2136,9 @@ def main():
 
 	# plot_prevalence_R()
 	# plot_mobility()
-	# plot_daily_results()
+	plot_daily_results()
 	# plot_sewage()
-	plot_individual_data()
+	# plot_individual_data()
 	# plot_cluster_change()
 
 	# estimate_recent_R(enddate_train = '2020-11-19')
