@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import matplotlib.colors as mcolors
 import matplotlib.cm as cmx
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 # import matplotlib.patches as mpatches
 
 import urllib.request
@@ -1216,7 +1217,10 @@ def plot_daily_results(use_individual_data = True):
 	labs = [l.get_label() for l in lns]
 	ax1.legend(lns, labs, loc='best')
 
-	ax1.set_xlabel(f'Estimated infection date\n(reporting date - incubation period (~6 days) - test delays (~{time_to_test_delay + result_delay} days))')
+	if use_individual_data:
+		ax1.set_xlabel(f'Estimated infection date\n(date of disease onset - incubation period (~6 days))')
+	else:
+		ax1.set_xlabel(f'Estimated infection date\n(reporting date - incubation period (~6 days) - test delays (~{time_to_test_delay + result_delay} days))')
 	ax1.set_ylabel('Number of tests per day')
 	ax2.set_ylabel('Positivity rate [%]')
 	ax3.set_ylabel('Oxford Stringency Index')
@@ -1682,6 +1686,7 @@ def stringency_R_correlation():
 	plt.savefig(f'{plotloc}Stringency_R_correlation.png', dpi = 200, bbox_inches = 'tight')
 	plt.close()
 
+
 def estimate_recent_R(enddate_train = '2020-10-25'):
 	"""
 	Estimate the reproductive number R with mobility data
@@ -1777,8 +1782,61 @@ def estimate_recent_R(enddate_train = '2020-10-25'):
 		plt.savefig(f'{mobplotloc}Mobility_R_correlation.png', dpi = 200, bbox_inches = 'tight')
 		plt.close()
 
-	### combine the best correlating mobility metrics to predict R
+	### determine correlation matrix for all these parameters
 	if True:
+		compare_parameters = [
+			'Rt_avg',
+			'retail_recreation_smooth',
+			'transit_stations_smooth',
+			'residential_smooth',
+			'workplaces_smooth',
+			'driving_smooth',
+			'walking_smooth',
+			'transit_smooth',
+			'Rad',
+			'TAvg',
+			'HumAvg'
+		]
+
+		#remove the "_smooth" part in the parameters names for better plotting
+		compare_parameters_names = [param.replace('_smooth', '') for param in compare_parameters]
+
+		#get the multiple parameters into a single array
+		A_data = dataframes_to_NDarray(df_train, compare_parameters)
+
+		#determine the correlation matrix
+		corr_matrix = np.corrcoef(A_data.T)
+
+		#print results
+		for i in range(len(compare_parameters)):
+			print(f'{compare_parameters[i]}: rho = {corr_matrix[0][i]:0.03f}')
+
+		### plot the correlation matrix
+		fig, ax = plt.subplots(figsize = (5, 5))
+
+		im = ax.imshow(corr_matrix, cmap = 'RdBu', origin = 'lower', vmin = -1, vmax = 1)
+
+		#make colorbar
+		divider = make_axes_locatable(ax)
+		cax = divider.append_axes('right', size = '5%', pad = 0.05)
+
+		cbar = plt.colorbar(im, cax = cax)
+		cbar.ax.set_ylabel('Pearson correlation coefficient')
+
+		tickpos = np.arange(corr_matrix.shape[0])
+
+		ax.set_xticks(tickpos)
+		ax.set_xticklabels(compare_parameters_names, rotation = 70, ha = 'right')
+		ax.set_yticks(tickpos)
+		ax.set_yticklabels(compare_parameters_names)
+
+		ax.set_title('Correlation matrix for reproductive number R')
+
+		plt.savefig(f'{mobplotloc}R_correlation_matrix.png', dpi = 200, bbox_inches = 'tight')
+		plt.close()
+
+	### combine the best correlating mobility metrics to predict R
+	if False:
 		best_correlating_metrics = [
 			'retail_recreation_smooth',
 			'transit_stations_smooth',
@@ -1787,8 +1845,9 @@ def estimate_recent_R(enddate_train = '2020-10-25'):
 			'driving_smooth',
 			'walking_smooth',
 			'transit_smooth',
+			'Rad',
 			'TAvg',
-			'Rad'
+			'HumAvg'
 		]
 		#get the multiple parameters into a single array
 		X = dataframes_to_NDarray(df_train, best_correlating_metrics)
@@ -2136,12 +2195,12 @@ def main():
 
 	# plot_prevalence_R()
 	# plot_mobility()
-	plot_daily_results()
+	# plot_daily_results()
 	# plot_sewage()
 	# plot_individual_data()
 	# plot_cluster_change()
 
-	# estimate_recent_R(enddate_train = '2020-11-19')
+	estimate_recent_R(enddate_train = '2020-11-19')
 	# estimate_recent_prevalence(enddate_train = '2020-11-25')
 
 if __name__ == '__main__':

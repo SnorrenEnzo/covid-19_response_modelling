@@ -1,7 +1,7 @@
 ## Modelling the outcome of Dutch government coronavirus response
 
 ### TODO:
-- Check all predictor input variables for covariance with R and prevalence
+- ...
 
 ### Data sources
 
@@ -84,6 +84,36 @@ Mortality rate 1/mu
 [covid-analytics.nl](https://covid-analytics.nl/population.html): the general test positivity rate graphs etc, but also detailed and complete information on hospital bed/ICU usage and up to date capacity.
 
 [CoronaWatchNL](https://github.com/Sikerdebaard/CoronaWatchNL)
+
+### Analysis
+
+#### Impact of humidity
+Predicting the reproductive number R with the following input parameters:
+
+```
+'retail_recreation_smooth',
+'transit_stations_smooth',
+'residential_smooth',
+'workplaces_smooth',
+'driving_smooth',
+'walking_smooth',
+'transit_smooth',
+'Rad',
+'TAvg'
+```
+
+Gives a 20% test set R^2 = 0.720. Now to tinker with the data (date of tinkering: 15-12-2020):
+- Removing `TAvg` (average daily temperature) gives a test set R^2 = 0.681.
+- Removing `TAvg` and adding `HumAvg` (average daily humidity) gives a test set R^2 = 0.687.
+- Adding `HumAvg` (and having `TAvg` included too) gives a test set R^2 = 0.726.
+
+So adding the `HumAvg` parameter "adds" an R^2 of 0.006, barely any impact.
+
+However, when looking at the correlation matrix we obtain the following Pearson correlation coefficients for the weather parameters:
+- Average daily solar radiation: 0.054
+- Average daily temperature: -0.026
+- Average daily relative humidity: 0.112
+
 
 ### Literature
 
