@@ -170,6 +170,12 @@ def extrapolate_dataframe(df, colname, date_to_extrap, base_period = 7):
 	#indicate which part was extrapolated
 	df['Extrapolated'] = 0
 
+	#do not extrapolate if the date to extrapolate to is smaller than the final date
+	if not (date_to_extrap - np.datetime64(df.index[-1]) > np.timedelta64(23, 'h')) and not (np.datetime64(df.index[0]) - date_to_extrap > np.timedelta64(23, 'h')):
+		df = df.astype({'Extrapolated': 'bool'})
+
+		return df
+
 	#check if we extrapolate on the front or back of the data sequence
 	extrap_front = False
 	if date_to_extrap < np.datetime64(df.index[0]):
@@ -338,7 +344,7 @@ def load_government_response_data():
 
 	return df_response
 
-def load_mobility_data(smooth = False, smoothsize = 7, apple_mobility_url_base = 'https://covid19-static.cdn-apple.com/covid19-mobility-data/2022HotfixDev20/v3/en-us/applemobilitytrends-'):
+def load_mobility_data(smooth = False, smoothsize = 7, apple_mobility_url_base = 'https://covid19-static.cdn-apple.com/covid19-mobility-data/2022HotfixDev25/v3/en-us/applemobilitytrends-'):
 	"""
 	Load Apple and Google mobility data. Downloadable from:
 
@@ -1157,8 +1163,6 @@ def plot_daily_results():
 	#merge datasets
 	df_daily_covid = df_daily_covid.merge(df_n_tests[['Number_of_tests', 'Extrapolated']], right_index = True, left_index = True)
 
-	print(df_n_tests.tail())
-
 	#determine test positivity rate
 	df_daily_covid['Positivity_ratio'] = df_daily_covid['Total_reported']/df_daily_covid['Number_of_tests']
 
@@ -1170,8 +1174,6 @@ def plot_daily_results():
 	startdate = '2020-07-01'
 	df_daily_covid = df_daily_covid.loc[df_daily_covid.index > startdate]
 	df_response = df_response.loc[df_response.index > startdate]
-
-	print(df_daily_covid.tail())
 
 
 	### make the plot
@@ -2097,11 +2099,11 @@ def main():
 	# plot_mobility()
 	# plot_daily_results()
 	# plot_sewage()
-	# plot_individual_data()
+	plot_individual_data()
 	# plot_cluster_change()
 
-	estimate_recent_R(enddate_train = '2020-11-12')
-	# estimate_recent_prevalence(enddate_train = '2020-11-17')
+	# estimate_recent_R(enddate_train = '2020-11-19')
+	# estimate_recent_prevalence(enddate_train = '2020-11-25')
 
 if __name__ == '__main__':
 	main()

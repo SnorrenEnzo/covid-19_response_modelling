@@ -1,7 +1,6 @@
 ## Modelling the outcome of Dutch government coronavirus response
 
 ### TODO:
-- Add enquete data to predictor input: [RIVM](https://data.rivm.nl/geonetwork/srv/dut/catalog.search#/metadata/8a72d78a-fcf8-4882-b0ab-cd594961a267)
 - Check all predictor input variables for covariance with R and prevalence
 
 ### Data sources
