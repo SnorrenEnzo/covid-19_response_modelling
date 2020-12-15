@@ -1498,7 +1498,7 @@ def plot_cluster_change():
 	plt.savefig(f'{plotloc}Cluster_amount_per_setting.png', dpi = 200, bbox_inches = 'tight')
 	plt.close()
 
-def plot_R_versus_weather(startdate = '2020-03-01'):
+def plot_R_versus_weather(startdate = '2020-06-15'):
 	df_prevalence, df_R = load_prevalence_R0_data()
 	df_weather = load_weather_data(smooth = False)
 
@@ -1724,7 +1724,7 @@ def estimate_recent_R(enddate_train = '2020-10-25'):
 	"""
 	print(f'WARNING: end date for R training set is {enddate_train}')
 
-	startdate_train = '2020-06-01'
+	startdate_train = '2020-06-15'
 	startdate_pred = '2020-07-01'
 
 	df_prevalence, df_R = load_prevalence_R0_data()
@@ -1814,7 +1814,7 @@ def estimate_recent_R(enddate_train = '2020-10-25'):
 		plt.close()
 
 	### determine correlation matrix for all these parameters
-	if True:
+	if False:
 		compare_parameters = [
 			'Rt_avg',
 			'retail_recreation_smooth',
@@ -1867,7 +1867,7 @@ def estimate_recent_R(enddate_train = '2020-10-25'):
 		plt.close()
 
 	### combine the best correlating mobility metrics to predict R
-	if False:
+	if True:
 		best_correlating_metrics = [
 			'retail_recreation_smooth',
 			'transit_stations_smooth',
@@ -1877,8 +1877,8 @@ def estimate_recent_R(enddate_train = '2020-10-25'):
 			'walking_smooth',
 			'transit_smooth',
 			'Rad',
-			'TAvg',
-			'HumAvg'
+			'TAvg'
+			# 'HumAvg'
 		]
 		#get the multiple parameters into a single array
 		X = dataframes_to_NDarray(df_train, best_correlating_metrics)
@@ -2223,7 +2223,7 @@ def main():
 	# plot_hospitalization()
 	# stringency_R_correlation()
 	# plot_superspreader_events()
-	plot_R_versus_weather()
+	# plot_R_versus_weather()
 
 	# plot_prevalence_R()
 	# plot_mobility()
@@ -2232,7 +2232,7 @@ def main():
 	# plot_individual_data()
 	# plot_cluster_change()
 
-	# estimate_recent_R(enddate_train = '2020-11-19')
+	estimate_recent_R(enddate_train = '2020-11-19')
 	# estimate_recent_prevalence(enddate_train = '2020-11-25')
 
 if __name__ == '__main__':
