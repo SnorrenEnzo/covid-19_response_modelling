@@ -1451,7 +1451,6 @@ def plot_individual_data(use_agegroups = True):
 		plt.savefig(f'{plotloc}Individual_testing_data_total_cases.png', dpi = 200, bbox_inches = 'tight')
 		plt.close()
 
-
 def plot_cluster_change():
 	"""
 	Plot the change in COVID-19 cluster types
@@ -1497,6 +1496,38 @@ def plot_cluster_change():
 	ax.xaxis.set_major_formatter(myfmt)
 
 	plt.savefig(f'{plotloc}Cluster_amount_per_setting.png', dpi = 200, bbox_inches = 'tight')
+	plt.close()
+
+def plot_R_versus_weather(startdate = '2020-03-01'):
+	df_prevalence, df_R = load_prevalence_R0_data()
+	df_weather = load_weather_data(smooth = False)
+
+	#merge datasets
+	df_plot = df_R.join(df_weather, how = 'inner')
+
+	df_plot = df_plot.loc[df_plot.index > startdate]
+
+	fig, axs = plt.subplots(ncols = 3, sharey = True, figsize = (8.5, 4))
+	axs = axs.flatten()
+
+	colours = ['maroon', 'navy', 'green']
+	params = ['TAvg', 'Rad', 'HumAvg']
+	labels = ['Daily average temperature [C]', 'Daily average solar radiation [J/cm$^2$]', 'Daily average relative humidity [%]']
+
+	for i in range(len(params)):
+		axs[i].scatter(df_plot[params[i]], df_plot['Rt_avg'], facecolor = colours[i], edgecolor = 'none', s = 3)
+
+		axs[i].grid(linestyle = ':')
+		axs[i].set_xlabel(labels[i], fontsize = 8.5)
+
+		if i == 0:
+			axs[i].set_ylabel('R')
+
+	fig.subplots_adjust(wspace = 0)
+
+	axs[1].set_title(f'R versus various weather observables since {startdate}')
+
+	plt.savefig(f'{plotloc}R_dependence_weather.png', dpi = 200, bbox_inches = 'tight')
 	plt.close()
 
 
@@ -2192,6 +2223,7 @@ def main():
 	# plot_hospitalization()
 	# stringency_R_correlation()
 	# plot_superspreader_events()
+	plot_R_versus_weather()
 
 	# plot_prevalence_R()
 	# plot_mobility()
@@ -2200,7 +2232,7 @@ def main():
 	# plot_individual_data()
 	# plot_cluster_change()
 
-	estimate_recent_R(enddate_train = '2020-11-19')
+	# estimate_recent_R(enddate_train = '2020-11-19')
 	# estimate_recent_prevalence(enddate_train = '2020-11-25')
 
 if __name__ == '__main__':
