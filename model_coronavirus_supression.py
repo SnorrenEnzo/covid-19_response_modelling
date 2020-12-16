@@ -22,11 +22,13 @@ from sklearn.linear_model import Ridge, LinearRegression, Lasso
 from sklearn.model_selection import train_test_split, ShuffleSplit
 from sklearn.ensemble import AdaBoostRegressor, RandomForestRegressor
 
+from astropy import units as u
+
 dataloc = './Data/'
 static_data_loc = f'{dataloc}Edit_only/'
 plotloc = './Plots/'
 plotloc_government_response = './Gov_response_plots/'
-mobplotloc = f'{plotloc}Mobility/'
+mobplotloc = f'{plotloc}R_prediction/'
 
 #source: https://www.cbs.nl/nl-nl/visualisaties/bevolkingsteller
 n_inhabitants_NL = 17455552
@@ -234,6 +236,59 @@ def extrapolate_dataframe(df, colname, date_to_extrap, base_period = 7):
 	df = df.astype({'Extrapolated': 'bool'})
 
 	return df
+
+def rel_humidity_conversion(RH, T, Ptot = None, humidity_type = 'absolute'):
+	"""
+	Based on the humidity conversion formulas by Vaisala
+
+	Input:
+	relative humidity (RH, in percent)
+	temperature (T, in degrees celcius)
+	Ptot: ambient pressure
+	"""
+	T = T.to(u.K, equivalencies = u.temperature())
+
+	### constants
+	#parameters for critical point of water, see https://en.wikipedia.org/wiki/Critical_point_(thermodynamics)
+	Tc = 647.096 * u.K
+	Pc = 22.064 * u.MPa
+
+	#coefficients from Wagner and Pruss, 1995
+	C1 = -7.85951783
+	C2 = 1.84408259
+	C3 = -11.7866497
+	C4 = 22.6807411
+	C5 = -15.9618719
+	C6 = 1.80122502
+
+	C = 2.16679 * u.g * u.K / u.J
+
+	#mixing ratio constant for air
+	B = 621.9907 *u.g/u.kg
+
+
+	### equations
+	#eq 2
+	v = 1 - T/Tc
+	#eq 3
+	Pws = Pc * np.exp((Tc/T) * (C1*v + C2*v**1.5 + C3*v**3 + C4*v**3.5 + C5*v**4 + C6*v**7.5))
+	#eq 1
+	Pw = (RH/100) * Pws
+
+	if humidity_type == 'absolute':
+		#eq 17
+		AH = C * Pw/T
+
+		return AH.decompose()
+	elif humidity_type == 'mixing ratio':
+		if Ptot is None:
+			raise ValueError('No ambient pressure given')
+		#eq 14
+		X = B*Pw/(Ptot - Pw)
+
+		return X.to(u.g/u.kg)
+	else:
+		raise ValueError('No proper desired humidity type given')
 
 
 def load_prevalence_R0_data():
@@ -1520,6 +1575,8 @@ def plot_R_versus_weather(startdate = '2020-06-15'):
 		axs[i].grid(linestyle = ':')
 		axs[i].set_xlabel(labels[i], fontsize = 8.5)
 
+		axs[i].xaxis.set_major_locator(MaxNLocator(prune = 'right'))
+
 		if i == 0:
 			axs[i].set_ylabel('R')
 
@@ -2232,8 +2289,11 @@ def main():
 	# plot_individual_data()
 	# plot_cluster_change()
 
-	estimate_recent_R(enddate_train = '2020-11-19')
+	# estimate_recent_R(enddate_train = '2020-11-19')
 	# estimate_recent_prevalence(enddate_train = '2020-11-25')
+
+	X = rel_humidity_conversion(80, 20*u.deg_C, Ptot = 100000*u.Pa, humidity_type = 'mixing ratio')
+	print(X)
 
 if __name__ == '__main__':
 	main()
