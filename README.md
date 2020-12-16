@@ -114,8 +114,8 @@ Gives a 20% test set R^2 = 0.851. Now to tinker with the data (date of tinkering
 So adding the `HumAvg` parameter "adds" an R^2 of ~0.003, barely any impact. The `HumAbsAvg` parameter has the same impact as the temperature. The temperature is part of the calculation for the absolute humidity from the relative humidity, so it seems that the temperature is the sole impact factor.
 
 When looking at the correlation matrix we obtain the following Pearson correlation coefficients for the weather parameters:
-- Average daily solar radiation: 0.161
-- Average daily temperature: -0.026
+- Average daily solar radiation [J/cm^2]: 0.161
+- Average daily temperature [C]: -0.026
 - Average daily relative humidity [%]: 0.065
 - Average daily absolute humidity [g/kg]: 0.045
 

@@ -1573,6 +1573,14 @@ def plot_R_versus_weather(startdate = '2020-06-15'):
 	params = ['TAvg', 'Rad', 'HumAbsAvg']
 	labels = ['Daily average temperature [C]', 'Daily average solar radiation [J/cm$^2$]', 'Daily average absolute humidity [g/kg]']
 
+	hum_threshold = 8 #g/kg
+	print('-----------')
+	print(f'R on days with absolute humidity below threshold of {hum_threshold} g/kg:')
+	print(np.mean(df_plot.loc[df_plot['HumAbsAvg'] < hum_threshold]['Rt_avg']))
+	print(f'\nR on days with absolute humidity above threshold of {hum_threshold} g/kg:')
+	print(np.mean(df_plot.loc[df_plot['HumAbsAvg'] > hum_threshold]['Rt_avg']))
+	print('-----------')
+
 	for i in range(len(params)):
 		axs[i].scatter(df_plot[params[i]], df_plot['Rt_avg'], facecolor = colours[i], edgecolor = 'none', s = 3)
 
@@ -2284,16 +2292,16 @@ def main():
 	# plot_hospitalization()
 	# stringency_R_correlation()
 	# plot_superspreader_events()
-	# plot_R_versus_weather()
+	plot_R_versus_weather()
 
 	# plot_prevalence_R()
 	# plot_mobility()
-	# plot_daily_results()
+	# plot_daily_results(use_individual_data = True)
 	# plot_sewage()
 	# plot_individual_data()
 	# plot_cluster_change()
 
-	estimate_recent_R(enddate_train = '2020-11-19')
+	# estimate_recent_R(enddate_train = '2020-11-19')
 	# estimate_recent_prevalence(enddate_train = '2020-11-25')
 
 if __name__ == '__main__':
