@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import matplotlib.colors as mcolors
 import matplotlib.cm as cmx
+from matplotlib.ticker import MaxNLocator
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 # import matplotlib.patches as mpatches
 
@@ -286,7 +287,7 @@ def rel_humidity_conversion(RH, T, Ptot = None, humidity_type = 'absolute'):
 		#eq 14
 		X = B*Pw/(Ptot - Pw)
 
-		return X.to(u.g/u.kg)
+		return X/(u.g/u.kg)
 	else:
 		raise ValueError('No proper desired humidity type given')
 
@@ -902,7 +903,7 @@ def load_cluster_data():
 
 	return df_clusters
 
-def load_weather_data(smooth = False):
+def load_weather_data(smooth = False, abs_hum = False):
 	"""
 	Load weather data from the KNMI, location De Bilt. More info:
 	https://www.knmi.nl/nederland-nu/klimatologie/daggegevens
@@ -932,9 +933,9 @@ def load_weather_data(smooth = False):
 		#also remove zip file
 		# os.remove(google_mobility_fname_zip)
 
-	df_weather = pd.read_csv(fname_weather, skiprows = 47, usecols = ['YYYYMMDD', '   TG', '    Q', '   UG'])
+	df_weather = pd.read_csv(fname_weather, skiprows = 47, usecols = ['YYYYMMDD', '   TG', '    Q', '   UG', '   PG'])
 
-	df_weather = df_weather.rename(columns = {'YYYYMMDD': 'Date', '   TG': 'TAvg', '    Q': 'Rad', '   UG': 'HumAvg'})
+	df_weather = df_weather.rename(columns = {'YYYYMMDD': 'Date', '   TG': 'TAvg', '    Q': 'Rad', '   UG': 'HumAvg', '   PG': 'P'})
 
 	df_weather['Date'] = pd.to_datetime(df_weather['Date'], format = '%Y%m%d')
 	df_weather.set_index('Date', inplace = True)
@@ -944,6 +945,9 @@ def load_weather_data(smooth = False):
 
 	#convert average temperature from 0.1 degrees C to 1 degree C
 	df_weather['TAvg'] /= 10
+
+	#calculate the absolute humidity (sometimes known as mixing ratio)
+	df_weather['HumAbsAvg'] = rel_humidity_conversion(df_weather['HumAvg'].values, df_weather['TAvg'].values*u.deg_C, Ptot = df_weather['P'].values*10*u.Pa, humidity_type = 'mixing ratio').decompose()
 
 	#smooth data if desired
 	if smooth:
@@ -1555,7 +1559,7 @@ def plot_cluster_change():
 
 def plot_R_versus_weather(startdate = '2020-06-15'):
 	df_prevalence, df_R = load_prevalence_R0_data()
-	df_weather = load_weather_data(smooth = False)
+	df_weather = load_weather_data(smooth = False, abs_hum = True)
 
 	#merge datasets
 	df_plot = df_R.join(df_weather, how = 'inner')
@@ -1566,8 +1570,8 @@ def plot_R_versus_weather(startdate = '2020-06-15'):
 	axs = axs.flatten()
 
 	colours = ['maroon', 'navy', 'green']
-	params = ['TAvg', 'Rad', 'HumAvg']
-	labels = ['Daily average temperature [C]', 'Daily average solar radiation [J/cm$^2$]', 'Daily average relative humidity [%]']
+	params = ['TAvg', 'Rad', 'HumAbsAvg']
+	labels = ['Daily average temperature [C]', 'Daily average solar radiation [J/cm$^2$]', 'Daily average absolute humidity [g/kg]']
 
 	for i in range(len(params)):
 		axs[i].scatter(df_plot[params[i]], df_plot['Rt_avg'], facecolor = colours[i], edgecolor = 'none', s = 3)
@@ -1575,7 +1579,7 @@ def plot_R_versus_weather(startdate = '2020-06-15'):
 		axs[i].grid(linestyle = ':')
 		axs[i].set_xlabel(labels[i], fontsize = 8.5)
 
-		axs[i].xaxis.set_major_locator(MaxNLocator(prune = 'right'))
+		# axs[i].xaxis.set_major_locator(MaxNLocator(prune = 'upper'))
 
 		if i == 0:
 			axs[i].set_ylabel('R')
@@ -1584,7 +1588,7 @@ def plot_R_versus_weather(startdate = '2020-06-15'):
 
 	axs[1].set_title(f'R versus various weather observables since {startdate}')
 
-	plt.savefig(f'{plotloc}R_dependence_weather.png', dpi = 200, bbox_inches = 'tight')
+	plt.savefig(f'{mobplotloc}R_dependence_weather.png', dpi = 200, bbox_inches = 'tight')
 	plt.close()
 
 
@@ -1787,7 +1791,7 @@ def estimate_recent_R(enddate_train = '2020-10-25'):
 	df_prevalence, df_R = load_prevalence_R0_data()
 	df_google_mob, df_apple_mob = load_mobility_data(smooth = True)
 	df_sewage = load_sewage_data(smooth = True, shiftdates = True)
-	df_weather = load_weather_data(smooth = True)
+	df_weather = load_weather_data(smooth = True, abs_hum = True)
 	#for the plot as a reference as well as data input
 	df_response = load_government_response_data()
 	df_response_plot = df_response.loc[df_response.index > startdate_pred]
@@ -1871,7 +1875,7 @@ def estimate_recent_R(enddate_train = '2020-10-25'):
 		plt.close()
 
 	### determine correlation matrix for all these parameters
-	if False:
+	if True:
 		compare_parameters = [
 			'Rt_avg',
 			'retail_recreation_smooth',
@@ -1883,7 +1887,7 @@ def estimate_recent_R(enddate_train = '2020-10-25'):
 			'transit_smooth',
 			'Rad',
 			'TAvg',
-			'HumAvg'
+			'HumAbsAvg'
 		]
 
 		#remove the "_smooth" part in the parameters names for better plotting
@@ -1934,8 +1938,8 @@ def estimate_recent_R(enddate_train = '2020-10-25'):
 			'walking_smooth',
 			'transit_smooth',
 			'Rad',
-			'TAvg'
-			# 'HumAvg'
+			'TAvg',
+			'HumAbsAvg'
 		]
 		#get the multiple parameters into a single array
 		X = dataframes_to_NDarray(df_train, best_correlating_metrics)
@@ -2289,11 +2293,8 @@ def main():
 	# plot_individual_data()
 	# plot_cluster_change()
 
-	# estimate_recent_R(enddate_train = '2020-11-19')
+	estimate_recent_R(enddate_train = '2020-11-19')
 	# estimate_recent_prevalence(enddate_train = '2020-11-25')
-
-	X = rel_humidity_conversion(80, 20*u.deg_C, Ptot = 100000*u.Pa, humidity_type = 'mixing ratio')
-	print(X)
 
 if __name__ == '__main__':
 	main()

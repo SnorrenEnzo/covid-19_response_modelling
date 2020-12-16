@@ -27,6 +27,8 @@ NICE intensive care data: [link](https://www.databronnencovid19.nl/Bron?naam=Nat
 Corona Locator, with a plethora of data: [link](https://bddataplan.nl/corona/)
 - Up to date clusters: [link](https://coronalocator.knack.com/corona-locator#cluster-meldingen/?view_670_per_page=5000&view_670_page=1&view_641_0_filters=%5B%7B%22value%22%3A%22%22%2C%22text%22%3A%22Alles%22%2C%22operator%22%3A%22is%20not%20blank%22%2C%22field%22%3A%22field_563%22%7D%5D&view_641_1_filters=%5B%7B%22value%22%3A%22%22%2C%22text%22%3A%22Alle%22%2C%22operator%22%3A%22is%20not%20blank%22%2C%22field%22%3A%22field_563%22%7D%5D)
 
+Weather data: [KNMI](https://www.knmi.nl/nederland-nu/klimatologie/daggegevens)
+
 #### Other international data
 
 Superspreader event database: [article](https://kmswinkels.medium.com/covid-19-superspreading-events-database-4c0a7aa2342b), [Google docs database](https://docs.google.com/spreadsheets/d/1c9jwMyT1lw2P0d6SDTno6nHLGMtpheO9xJyGHgdBoco/edit#gid=1812932356)
@@ -102,17 +104,20 @@ Predicting the reproductive number R with the following input parameters since 1
 'TAvg'
 ```
 
-Gives a 20% test set R^2 = 0.851. Now to tinker with the data (date of tinkering: 15-12-2020):
+Gives a 20% test set R^2 = 0.851. Now to tinker with the data (date of tinkering: 16-12-2020):
 - Removing `TAvg` (average daily temperature) gives a test set R^2 = 0.841.
-- Removing `TAvg` and adding `HumAvg` (average daily humidity) gives a test set R^2 = 0.842.
+- Removing `TAvg` and adding `HumAvg` (average daily relative humidity) gives a test set R^2 = 0.842.
 - Adding `HumAvg` (and having `TAvg` included too) gives a test set R^2 = 0.854.
+- Removing `TAvg` and adding `HumAbsAvg` (average daily absolute humidity) gives a test set R^2 = 0.854.
+- Adding `HumAbsAvg` (and having `TAvg` included too) gives a test set R^2 = 0.854.
 
-So adding the `HumAvg` parameter "adds" an R^2 of ~0.003, barely any impact.
+So adding the `HumAvg` parameter "adds" an R^2 of ~0.003, barely any impact. The `HumAbsAvg` parameter has the same impact as the temperature. The temperature is part of the calculation for the absolute humidity from the relative humidity, so it seems that the temperature is the sole impact factor.
 
 When looking at the correlation matrix we obtain the following Pearson correlation coefficients for the weather parameters:
 - Average daily solar radiation: 0.161
 - Average daily temperature: -0.026
-- Average daily relative humidity: 0.065
+- Average daily relative humidity [%]: 0.065
+- Average daily absolute humidity [g/kg]: 0.045
 
 
 ### Literature
