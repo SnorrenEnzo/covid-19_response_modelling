@@ -401,7 +401,7 @@ def load_government_response_data():
 
 	return df_response
 
-def load_mobility_data(smooth = False, smoothsize = 7, apple_mobility_url_base = 'https://covid19-static.cdn-apple.com/covid19-mobility-data/2022HotfixDev25/v3/en-us/applemobilitytrends-'):
+def load_mobility_data(smooth = False, smoothsize = 7, apple_mobility_url_base = 'https://covid19-static.cdn-apple.com/covid19-mobility-data/2023HotfixDev11/v3/en-us/applemobilitytrends-'):
 	"""
 	Load Apple and Google mobility data. Downloadable from:
 
@@ -2292,15 +2292,15 @@ def main():
 	# plot_hospitalization()
 	# stringency_R_correlation()
 	# plot_superspreader_events()
-	plot_R_versus_weather()
+	# plot_R_versus_weather()
 
 	# plot_prevalence_R()
 	# plot_mobility()
-	# plot_daily_results(use_individual_data = True)
+	# plot_daily_results(use_individual_data = False)
 	# plot_sewage()
 	# plot_individual_data()
 	# plot_cluster_change()
-
+	#
 	# estimate_recent_R(enddate_train = '2020-11-19')
 	# estimate_recent_prevalence(enddate_train = '2020-11-25')
 
