@@ -1746,7 +1746,7 @@ def government_response_results_SEIRD():
 	plt.savefig(f'{plotloc_government_response}Government_response_outcome_complex.png', dpi = 200, bbox_inches = 'tight')
 	plt.close()
 
-def stringency_R_correlation():
+def stringency_R_correlation(enddate = '2020-11-26'):
 	df_response = load_government_response_data()
 	df_prevalence, df_R0 = load_prevalence_R0_data()
 
@@ -1754,7 +1754,7 @@ def stringency_R_correlation():
 	df_reponse_results = df_response.merge(df_R0[['Rt_avg']], right_index = True, left_index = True)
 
 	#select date range
-	mask = (df_reponse_results.index > '2020-02-16') & (df_reponse_results.index <= '2020-09-18')
+	mask = (df_reponse_results.index > '2020-02-16') & (df_reponse_results.index <= enddate)
 	df_reponse_results = df_reponse_results.loc[mask]
 
 	### fit a linear model
@@ -1769,17 +1769,23 @@ def stringency_R_correlation():
 	### plot results
 	fig, ax = plt.subplots()
 
-	ax.scatter(df_reponse_results['StringencyIndex'], df_reponse_results['Rt_avg'], color = 'maroon', alpha = 0.6, s = 8, label = 'Measurements')
+	ax.scatter(df_reponse_results['StringencyIndex'], df_reponse_results['Rt_avg'], color = 'maroon', alpha = 0.6, s = 8, label = 'RIVM inferred $R$')
 
 	#plot the model
 	xpoints = np.linspace(np.min(df_reponse_results.loc[high_stringency_mask]['StringencyIndex']), np.max(df_reponse_results.loc[high_stringency_mask]['StringencyIndex']), num = 500)
 	ax.plot(xpoints, linear_model(xpoints, *popt), label = r'Fit ($R^2 = $' + f'{r_squared:0.03f})', color = 'black')
 
+	### now plot the effects of a variant which is more infectious
+	infectious_increase_factor = 1.4
+	xpoints = np.linspace(np.min(df_reponse_results.loc[high_stringency_mask]['StringencyIndex']), 100, num = 500)
+	ax.plot(xpoints, linear_model(xpoints, *popt) * infectious_increase_factor, label = f'SARS-COV-2 VUI 202012/01 model\n{infectious_increase_factor} times as infectious', color = betterorange)
+
+
 	ax.set_xlabel('Oxford Stringency Index')
 	ax.set_ylabel(f'$R$')
 
 	ax.grid(linestyle = ':')
-	ax.legend(loc = 'best')
+	ax.legend(loc = 'best', prop={'size': 9})
 
 	ax.set_title(r'$R$ versus stringency index of Dutch coronavirus reponse')
 
@@ -2290,7 +2296,7 @@ def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 5):
 def main():
 	# government_response_results_simple()
 	# plot_hospitalization()
-	# stringency_R_correlation()
+	stringency_R_correlation()
 	# plot_superspreader_events()
 	# plot_R_versus_weather()
 
