@@ -291,6 +291,50 @@ def rel_humidity_conversion(RH, T, Ptot = None, humidity_type = 'absolute'):
 	else:
 		raise ValueError('No proper desired humidity type given')
 
+def whitening_transform(X, return_W_matrix = False):
+	"""
+	Decorrelate input data parameters by performing a whitening transformation
+	https://en.wikipedia.org/wiki/Whitening_transformation
+
+	Based on:
+	https://learndataa.com/2020/09/15/data-preprocessing-whitening-or-sphering-in-python/
+	"""
+
+	# Center data
+	# By subtracting mean for each feature
+	Xc = X - np.mean(X, axis = 0)
+	Xc = Xc.T
+
+	# Calculate covariance matrix
+	Xcov = np.cov(Xc, bias = True)
+
+	# Calculate Eigenvalues and Eigenvectors
+	w, v = np.linalg.eig(Xcov)
+	# Note: Use w.real.round(4) to (1) remove 'j' notation to real, (2) round to '4' significant digits
+
+	# Calculate inverse square root of Eigenvalues
+	# Optional: Add '.1e5' to avoid division errors if needed
+	# Create a diagonal matrix
+	diagw = np.diag(1/(w**0.5)) # or np.diag(1/((w+.1e-5)**0.5))
+	diagw = diagw.real.round(4) #convert to real and round off
+
+	# Calculate Rotation (optional)
+	# Note: To see how data can be rotated
+	# Xrot = np.dot(v, Xc)
+
+	# Whitening transform using PCA (Principal Component Analysis)
+	# Wpca = np.dot(np.dot(diagw, v.T), Xc).T
+	Wpca = diagw @ v.T
+	Xwhitened = (Wpca @ Xc).T
+
+	# Whitening transform using ZCA (Zero Component Analysis)
+	# wzca = np.dot(np.dot(np.dot(v, diagw), v.T), xc)
+
+	if return_W_matrix:
+		return Xwhitened, Wpca
+	else:
+		return Xwhitened
+
 
 def load_prevalence_R0_data():
 	"""
@@ -1889,7 +1933,7 @@ def estimate_recent_R(enddate_train = '2020-10-25'):
 		plt.close()
 
 	### determine correlation matrix for all these parameters
-	if True:
+	if False:
 		compare_parameters = [
 			'Rt_avg',
 			'retail_recreation_smooth',
@@ -1910,8 +1954,43 @@ def estimate_recent_R(enddate_train = '2020-10-25'):
 		#get the multiple parameters into a single array
 		A_data = dataframes_to_NDarray(df_train, compare_parameters)
 
+		### Remove multiple colinearity by applying a whitening transformations
+		Xwhitened = whitening_transform(A_data[:,1:])
+		#append data on R
+		A_whitened = np.concatenate((A_data[:,:1], Xwhitened), axis = 1)
+
 		#determine the correlation matrix
-		corr_matrix = np.corrcoef(A_data.T)
+		corr_matrix = np.corrcoef(A_whitened.T)
+
+
+		### plot the transformed data to see what they respresent
+		#get correlation coefficients
+		corr_coeff = corr_matrix[0]
+		#select on large enough absolute correlation coefficient
+		corr_coeff_sel = corr_coeff[np.abs(corr_coeff) > 0.15]
+
+		sortloc = np.argsort(np.abs(corr_coeff_sel))
+
+		fig, ax = plt.subplots()
+
+		cmap = plt.get_cmap('viridis')
+		cNorm  = mcolors.Normalize(vmin = 0, vmax = len(sortloc) - 1)
+		scalarMap = cmx.ScalarMappable(norm = cNorm, cmap = cmap)
+
+		xpoints = np.arange(A_whitened.shape[0])
+
+		for i, loc in enumerate(sortloc):
+			ax.plot(xpoints, A_whitened[:,loc], color = scalarMap.to_rgba(i), label = f'{corr_coeff_sel[loc]:0.03f}')
+
+		ax.grid(linestyle = ':')
+		ax.legend(loc = 'best', title = 'CorrCoeff')
+		ax.set_xlabel('Time in days')
+		ax.set_ylabel('Parameter value')
+
+		plt.savefig(f'{mobplotloc}R_mob_data_whitened.png', dpi = 200, bbox_inches = 'tight')
+		plt.close()
+
+		del fig, ax
 
 		#print results
 		for i in range(len(compare_parameters)):
@@ -1938,7 +2017,7 @@ def estimate_recent_R(enddate_train = '2020-10-25'):
 
 		ax.set_title('Correlation matrix for reproductive number R')
 
-		plt.savefig(f'{mobplotloc}R_correlation_matrix.png', dpi = 200, bbox_inches = 'tight')
+		plt.savefig(f'{mobplotloc}R_correlation_matrix_whitened.png', dpi = 200, bbox_inches = 'tight')
 		plt.close()
 
 	### combine the best correlating mobility metrics to predict R
@@ -1955,8 +2034,13 @@ def estimate_recent_R(enddate_train = '2020-10-25'):
 			'TAvg',
 			'HumAbsAvg'
 		]
+
 		#get the multiple parameters into a single array
-		X = dataframes_to_NDarray(df_train, best_correlating_metrics)
+		Xraw = dataframes_to_NDarray(df_train, best_correlating_metrics)
+
+		### apply whitening transformation to remove multiple colinearity
+		X, W = whitening_transform(Xraw, return_W_matrix = True)
+
 		Y = np.array(df_train['Rt_avg'])
 		#weights are important; can reduce training R^2 from 0.859 to 0.820
 		weight = 1/np.array(df_train['Rt_abs_error'])
@@ -2018,12 +2102,17 @@ def estimate_recent_R(enddate_train = '2020-10-25'):
 
 		ax.set_title('R prediction accuracy using mobility data')
 
-		plt.savefig(f'{mobplotloc}Mobility_R_prediction_accuracy.png', dpi = 200, bbox_inches = 'tight')
+		plt.savefig(f'{mobplotloc}Mobility_R_prediction_accuracy_whitened.png', dpi = 200, bbox_inches = 'tight')
 		plt.close()
 
 
 		### now make and plot predictions
-		X_pred = dataframes_to_NDarray(df_pred, best_correlating_metrics)
+		X_pred_raw = dataframes_to_NDarray(df_pred, best_correlating_metrics)
+
+		#apply whitening transformation
+		X_pred_raw = X_pred_raw - np.mean(X_pred_raw, axis = 0)
+		X_pred_raw = X_pred_raw.T
+		X_pred = (W @ X_pred_raw).T
 
 		Y_pred = clf.predict(X_pred)
 
@@ -2064,7 +2153,7 @@ def estimate_recent_R(enddate_train = '2020-10-25'):
 		myfmt = mdates.DateFormatter('%d-%m-%Y')
 		ax1.xaxis.set_major_formatter(myfmt)
 
-		plt.savefig(f'{mobplotloc}Mobility_R_prediction.png', dpi = 200, bbox_inches = 'tight')
+		plt.savefig(f'{mobplotloc}Mobility_R_prediction_whitened.png', dpi = 200, bbox_inches = 'tight')
 		plt.close()
 
 def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 5):
@@ -2296,18 +2385,18 @@ def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 5):
 def main():
 	# government_response_results_simple()
 	# plot_hospitalization()
-	stringency_R_correlation()
+	# stringency_R_correlation()
 	# plot_superspreader_events()
 	# plot_R_versus_weather()
 
 	# plot_prevalence_R()
 	# plot_mobility()
-	# plot_daily_results(use_individual_data = False)
+	# plot_daily_results(use_individual_data = True)
 	# plot_sewage()
 	# plot_individual_data()
 	# plot_cluster_change()
 	#
-	# estimate_recent_R(enddate_train = '2020-11-19')
+	estimate_recent_R(enddate_train = '2020-11-19')
 	# estimate_recent_prevalence(enddate_train = '2020-11-25')
 
 if __name__ == '__main__':
