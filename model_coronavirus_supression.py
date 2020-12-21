@@ -1848,22 +1848,33 @@ def estimate_recent_R(enddate_train = '2020-10-25'):
 
 	df_prevalence, df_R = load_prevalence_R0_data()
 	df_google_mob, df_apple_mob = load_mobility_data(smooth = True)
-	df_sewage = load_sewage_data(smooth = True, shiftdates = True)
 	df_weather = load_weather_data(smooth = True, abs_hum = True)
 	#for the plot as a reference as well as data input
 	df_response = load_government_response_data()
 	df_response_plot = df_response.loc[df_response.index > startdate_pred]
+
+	print('------------')
+	print('R prediction input data latest entries:')
+	print('Google mob: ' + str(df_google_mob.index[-1].date()))
+	print('Apple mob: ' + str(df_apple_mob.index[-1].date()))
+	print('Weather data: ' + str(df_weather.index[-1].date()))
+	print('Government response data: ' + str(df_response.index[-1].date()))
+	print('------------')
 
 	#determine error of R
 	df_R['Rt_abs_error'] = ((df_R['Rt_low'] - df_R['Rt_avg']).abs() + (df_R['Rt_up'] - df_R['Rt_avg']).abs())/2
 
 	#merge datasets
 	# df_mob_R = df_google_mob.merge(df_R, right_index = True, left_index = True)
-	df_mob_R = df_google_mob.join(df_R, how = 'inner')
+	#left join with df_R is essential otherwise we limit ourselves to the date
+	#range of the RIVM estimations, which we actually want to surpass
+	df_mob_R = df_google_mob.join(df_R, how = 'left')
 	df_mob_R = df_mob_R.join(df_apple_mob, how = 'inner')
-	df_mob_R = df_mob_R.join(df_sewage[['RNA_flow_smooth']], how = 'inner')
 	df_mob_R = df_mob_R.join(df_response, how = 'inner')
 	df_mob_R = df_mob_R.join(df_weather, how = 'inner')
+
+	print('Combined data: ' + str(df_mob_R.index[-1].date()))
+	print('------------')
 
 	#only now load the behaviour data as we have to extrapolate this anyhow
 	#and need to get the extrapolation edges
@@ -1878,14 +1889,12 @@ def estimate_recent_R(enddate_train = '2020-10-25'):
 	df_pred = df_mob_R.loc[df_mob_R.index > startdate_pred]
 
 
-
 	key_names = {
 	'retail_recreation_smooth': 'Retail & recreation',
 	'parks_smooth': 'Parks',
 	'transit_stations_smooth': 'Transit stations',
 	'workplaces_smooth': 'Workplaces',
 	'residential_smooth': 'Residential',
-	'RNA_flow_smooth': 'RNA flow smooth',
 	'driving_smooth': 'Driving',
 	'walking_smooth': 'Walking',
 	'transit_smooth': 'Transit'
@@ -1954,6 +1963,7 @@ def estimate_recent_R(enddate_train = '2020-10-25'):
 		#get the multiple parameters into a single array
 		A_data = dataframes_to_NDarray(df_train, compare_parameters)
 
+		'''
 		### Remove multiple colinearity by applying a whitening transformations
 		Xwhitened = whitening_transform(A_data[:,1:])
 		#append data on R
@@ -1991,6 +2001,9 @@ def estimate_recent_R(enddate_train = '2020-10-25'):
 		plt.close()
 
 		del fig, ax
+		'''
+
+		corr_matrix = np.corrcoef(A_data.T)
 
 		#print results
 		for i in range(len(compare_parameters)):
@@ -2017,7 +2030,7 @@ def estimate_recent_R(enddate_train = '2020-10-25'):
 
 		ax.set_title('Correlation matrix for reproductive number R')
 
-		plt.savefig(f'{mobplotloc}R_correlation_matrix_whitened.png', dpi = 200, bbox_inches = 'tight')
+		plt.savefig(f'{mobplotloc}R_correlation_matrix.png', dpi = 200, bbox_inches = 'tight')
 		plt.close()
 
 	### combine the best correlating mobility metrics to predict R
@@ -2036,10 +2049,7 @@ def estimate_recent_R(enddate_train = '2020-10-25'):
 		]
 
 		#get the multiple parameters into a single array
-		Xraw = dataframes_to_NDarray(df_train, best_correlating_metrics)
-
-		### apply whitening transformation to remove multiple colinearity
-		X, W = whitening_transform(Xraw, return_W_matrix = True)
+		X = dataframes_to_NDarray(df_train, best_correlating_metrics)
 
 		Y = np.array(df_train['Rt_avg'])
 		#weights are important; can reduce training R^2 from 0.859 to 0.820
@@ -2102,17 +2112,12 @@ def estimate_recent_R(enddate_train = '2020-10-25'):
 
 		ax.set_title('R prediction accuracy using mobility data')
 
-		plt.savefig(f'{mobplotloc}Mobility_R_prediction_accuracy_whitened.png', dpi = 200, bbox_inches = 'tight')
+		plt.savefig(f'{mobplotloc}Mobility_R_prediction_accuracy.png', dpi = 200, bbox_inches = 'tight')
 		plt.close()
 
 
 		### now make and plot predictions
-		X_pred_raw = dataframes_to_NDarray(df_pred, best_correlating_metrics)
-
-		#apply whitening transformation
-		X_pred_raw = X_pred_raw - np.mean(X_pred_raw, axis = 0)
-		X_pred_raw = X_pred_raw.T
-		X_pred = (W @ X_pred_raw).T
+		X_pred = dataframes_to_NDarray(df_pred, best_correlating_metrics)
 
 		Y_pred = clf.predict(X_pred)
 
@@ -2141,7 +2146,7 @@ def estimate_recent_R(enddate_train = '2020-10-25'):
 
 		ax1.set_ylabel('$R$')
 		ax2.set_ylabel('Oxford Stringency Index')
-		ax1.set_title('$R$ prediction')
+		ax1.set_title(f'$R$ prediction up to {df_pred.index[-1].date()}')
 
 		ax2.set_ylim(0)
 
@@ -2153,7 +2158,7 @@ def estimate_recent_R(enddate_train = '2020-10-25'):
 		myfmt = mdates.DateFormatter('%d-%m-%Y')
 		ax1.xaxis.set_major_formatter(myfmt)
 
-		plt.savefig(f'{mobplotloc}Mobility_R_prediction_whitened.png', dpi = 200, bbox_inches = 'tight')
+		plt.savefig(f'{mobplotloc}Mobility_R_prediction.png', dpi = 200, bbox_inches = 'tight')
 		plt.close()
 
 def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 5):
