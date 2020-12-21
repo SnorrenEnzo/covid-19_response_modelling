@@ -27,9 +27,11 @@ from astropy import units as u
 
 dataloc = './Data/'
 static_data_loc = f'{dataloc}Edit_only/'
+
 plotloc = './Plots/'
 plotloc_government_response = './Gov_response_plots/'
-mobplotloc = f'{plotloc}R_prediction/'
+R_plotloc = f'{plotloc}R_prediction/'
+Prev_plotloc = f'{plotloc}Prevalence_prediction/'
 
 #source: https://www.cbs.nl/nl-nl/visualisaties/bevolkingsteller
 n_inhabitants_NL = 17455552
@@ -445,7 +447,7 @@ def load_government_response_data():
 
 	return df_response
 
-def load_mobility_data(smooth = False, smoothsize = 7, apple_mobility_url_base = 'https://covid19-static.cdn-apple.com/covid19-mobility-data/2023HotfixDev11/v3/en-us/applemobilitytrends-'):
+def load_mobility_data(smooth = False, smoothsize = 7, apple_mobility_url_base = 'https://covid19-static.cdn-apple.com/covid19-mobility-data/2023HotfixDev13/v3/en-us/applemobilitytrends-'):
 	"""
 	Load Apple and Google mobility data. Downloadable from:
 
@@ -1186,7 +1188,7 @@ def plot_mobility():
 	ax.legend(loc = 'lower center', ncol = 3, prop = {'size': 9})
 	ax.xaxis.set_tick_params(rotation = 45)
 
-	plt.savefig(f'{mobplotloc}Mobility_change_Google.png', dpi = 200, bbox_inches = 'tight')
+	plt.savefig(f'{R_plotloc}Mobility_change_Google.png', dpi = 200, bbox_inches = 'tight')
 	plt.close()
 
 
@@ -1207,7 +1209,7 @@ def plot_mobility():
 	ax.legend(loc = 'lower center', ncol = 3, prop = {'size': 9})
 	ax.xaxis.set_tick_params(rotation = 45)
 
-	plt.savefig(f'{mobplotloc}Mobility_change_Apple.png', dpi = 200, bbox_inches = 'tight')
+	plt.savefig(f'{R_plotloc}Mobility_change_Apple.png', dpi = 200, bbox_inches = 'tight')
 	plt.close()
 
 def plot_sewage():
@@ -1328,7 +1330,7 @@ def plot_daily_results(use_individual_data = True):
 	ax2.set_ylabel('Positivity rate [%]')
 	ax3.set_ylabel('Oxford Stringency Index')
 
-	ax1.set_title('SARS-CoV-2 tests in the Netherlands')
+	ax1.set_title(f'SARS-CoV-2 tests in the Netherlands up to {str(df_daily_covid.index[-1].date())}')
 
 	# ax.xaxis.set_tick_params(rotation = 45)
 	ax1.xaxis.set_major_locator(mdates.AutoDateLocator(minticks = 3, maxticks = 6))
@@ -1640,7 +1642,7 @@ def plot_R_versus_weather(startdate = '2020-06-15'):
 
 	axs[1].set_title(f'R versus various weather observables since {startdate}')
 
-	plt.savefig(f'{mobplotloc}R_dependence_weather.png', dpi = 200, bbox_inches = 'tight')
+	plt.savefig(f'{R_plotloc}R_dependence_weather.png', dpi = 200, bbox_inches = 'tight')
 	plt.close()
 
 
@@ -1938,7 +1940,7 @@ def estimate_recent_R(enddate_train = '2020-10-25'):
 		plt.xlabel('Mobility change from baseline [%]')
 		plt.ylabel('$R$')
 
-		plt.savefig(f'{mobplotloc}Mobility_R_correlation.png', dpi = 200, bbox_inches = 'tight')
+		plt.savefig(f'{R_plotloc}Mobility_R_correlation.png', dpi = 200, bbox_inches = 'tight')
 		plt.close()
 
 	### determine correlation matrix for all these parameters
@@ -1997,7 +1999,7 @@ def estimate_recent_R(enddate_train = '2020-10-25'):
 		ax.set_xlabel('Time in days')
 		ax.set_ylabel('Parameter value')
 
-		plt.savefig(f'{mobplotloc}R_mob_data_whitened.png', dpi = 200, bbox_inches = 'tight')
+		plt.savefig(f'{R_plotloc}R_mob_data_whitened.png', dpi = 200, bbox_inches = 'tight')
 		plt.close()
 
 		del fig, ax
@@ -2030,7 +2032,7 @@ def estimate_recent_R(enddate_train = '2020-10-25'):
 
 		ax.set_title('Correlation matrix for reproductive number R')
 
-		plt.savefig(f'{mobplotloc}R_correlation_matrix.png', dpi = 200, bbox_inches = 'tight')
+		plt.savefig(f'{R_plotloc}R_correlation_matrix.png', dpi = 200, bbox_inches = 'tight')
 		plt.close()
 
 	### combine the best correlating mobility metrics to predict R
@@ -2112,7 +2114,7 @@ def estimate_recent_R(enddate_train = '2020-10-25'):
 
 		ax.set_title('R prediction accuracy using mobility data')
 
-		plt.savefig(f'{mobplotloc}Mobility_R_prediction_accuracy.png', dpi = 200, bbox_inches = 'tight')
+		plt.savefig(f'{R_plotloc}Mobility_R_prediction_accuracy.png', dpi = 200, bbox_inches = 'tight')
 		plt.close()
 
 
@@ -2158,7 +2160,7 @@ def estimate_recent_R(enddate_train = '2020-10-25'):
 		myfmt = mdates.DateFormatter('%d-%m-%Y')
 		ax1.xaxis.set_major_formatter(myfmt)
 
-		plt.savefig(f'{mobplotloc}Mobility_R_prediction.png', dpi = 200, bbox_inches = 'tight')
+		plt.savefig(f'{R_plotloc}Mobility_R_prediction.png', dpi = 200, bbox_inches = 'tight')
 		plt.close()
 
 def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 5):
@@ -2169,13 +2171,21 @@ def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 5):
 
 	startdate_train = '2020-09-08'
 
+	df_prevalence, df_R0 = load_prevalence_R0_data()
 	df_overall_positive_tests = load_daily_covid(correct_for_delay = False)
 	df_individual = load_individual_positive_test_data(load_agegroups = True)
 	df_n_tests = load_number_of_tests()
-	df_prevalence, df_R0 = load_prevalence_R0_data()
 	df_sewage = load_sewage_data(smooth = True, shiftdates = False)
 	#for the plot as a reference
 	df_response = load_government_response_data()
+
+	print('------------')
+	print('Prevalence prediction input data latest entries:')
+	print('Overall positive tests data: ' + str(df_overall_positive_tests.index[-1].date()))
+	print('Individual positive test data: ' + str(df_individual.index[-1].date()))
+	print('N tests data: ' + str(df_n_tests.index[-1].date()))
+	print('Sewage data: ' + str(df_sewage.index[-1].date()))
+	print('------------')
 
 	df_response = df_response.loc[df_response.index > startdate_train]
 
@@ -2187,7 +2197,7 @@ def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 5):
 	df_overall_positive_tests.index = df_overall_positive_tests.index - pd.Timedelta(f'{result_delay} day')
 
 	#merge datasets for test positivity calculations
-	df_daily_covid = df_n_tests[['Number_of_tests']].merge(df_overall_positive_tests[['Total_reported']], right_index = True, left_index = True)
+	df_daily_covid = df_n_tests[['Number_of_tests']].join(df_overall_positive_tests[['Total_reported']], how = 'inner')
 
 	#determine test positivity rate for the overall sample
 	df_daily_covid['Positivity_ratio'] = df_daily_covid['Total_reported']/df_daily_covid['Number_of_tests']
@@ -2211,9 +2221,14 @@ def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 5):
 
 	### final dataset merge
 	#merge overall positivity ratio with age group data
-	df_daily_covid = df_individual.merge(df_daily_covid, right_index = True, left_index = True)
+	df_daily_covid = df_individual.join(df_daily_covid, how = 'inner')
 	#merge with sewage data
-	df_predictors = df_daily_covid.merge(df_sewage[['RNA_flow_smooth']], right_index = True, left_index = True)
+	df_predictors = df_daily_covid.join(df_sewage[['RNA_flow_smooth']], how = 'inner')
+
+	print(df_predictors.columns)
+	print('Combined data: ' + str(df_predictors.index[-1].date()))
+
+	print('------------')
 
 	#determine error on prevalence
 	df_prevalence['prev_abs_error'] = ((df_prevalence['prev_low'] - df_prevalence['prev_avg']).abs() + (df_prevalence['prev_up'] - df_prevalence['prev_avg']).abs())/2
@@ -2246,6 +2261,8 @@ def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 5):
 	else:
 		parameters_used.append('Positivity_ratio')
 
+
+
 	'''
 	fig, ax1 = plt.subplots()
 
@@ -2258,10 +2275,48 @@ def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 5):
 	plt.close()
 	'''
 
+	######## Finally finished with data merging
+
 	### get data into the shape required for sklearn functions
 	X = dataframes_to_NDarray(df_predictors_cor, parameters_used)
 	Y = np.array(df_prevalence_cor['prev_avg'])
 	weight = 1/np.array(df_prevalence_cor['prev_abs_error'])
+
+	### plot correlation matrix
+	if True:
+		corr_matrix = np.corrcoef(np.concatenate((Y[:,None], X), axis = 1).T)
+
+		compare_parameters_names = ['Prevalence'] + [param.replace('_smooth', '') for param in parameters_used]
+
+		#print results
+		print('Correlation of predictor parameters with prevalence:')
+		for i in range(len(compare_parameters_names)):
+			print(f'{compare_parameters_names[i]}: rho = {corr_matrix[0][i]:0.03f}')
+		print('-------------')
+
+		### plot the correlation matrix
+		fig, ax = plt.subplots(figsize = (5, 5))
+
+		im = ax.imshow(corr_matrix, cmap = 'RdBu', origin = 'lower', vmin = -1, vmax = 1)
+
+		#make colorbar
+		divider = make_axes_locatable(ax)
+		cax = divider.append_axes('right', size = '5%', pad = 0.05)
+
+		cbar = plt.colorbar(im, cax = cax)
+		cbar.ax.set_ylabel('Pearson correlation coefficient')
+
+		tickpos = np.arange(corr_matrix.shape[0])
+
+		ax.set_xticks(tickpos)
+		ax.set_xticklabels(compare_parameters_names, rotation = 70, ha = 'right')
+		ax.set_yticks(tickpos)
+		ax.set_yticklabels(compare_parameters_names)
+
+		ax.set_title('Correlation matrix for prevalence and predictor variables')
+
+		plt.savefig(f'{Prev_plotloc}Prevalence_correlation_matrix.png', dpi = 200, bbox_inches = 'tight')
+		plt.close()
 
 	###split into train and test set
 	rs = ShuffleSplit(n_splits = 1, test_size = 0.4, random_state = 1923)
@@ -2324,7 +2379,7 @@ def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 5):
 
 	ax.set_title('Prevalence prediction accuracy using mobility data')
 
-	plt.savefig(f'{plotloc}Prevalence_prediction_accuracy.png', dpi = 200, bbox_inches = 'tight')
+	plt.savefig(f'{Prev_plotloc}Prevalence_prediction_accuracy.png', dpi = 200, bbox_inches = 'tight')
 	plt.close()
 
 
@@ -2384,7 +2439,7 @@ def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 5):
 	ax1.set_ylim(0)
 	ax2.set_ylim(0)
 
-	plt.savefig(f'{plotloc}Prevalence_second_wave_with_predictions.png', dpi = 200, bbox_inches = 'tight')
+	plt.savefig(f'{Prev_plotloc}Prevalence_second_wave_with_predictions.png', dpi = 200, bbox_inches = 'tight')
 	plt.close()
 
 def main():
@@ -2401,8 +2456,8 @@ def main():
 	# plot_individual_data()
 	# plot_cluster_change()
 	#
-	estimate_recent_R(enddate_train = '2020-11-19')
-	# estimate_recent_prevalence(enddate_train = '2020-11-25')
+	# estimate_recent_R(enddate_train = '2020-11-19')
+	estimate_recent_prevalence(enddate_train = '2020-11-25')
 
 if __name__ == '__main__':
 	main()
