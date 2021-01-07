@@ -447,7 +447,7 @@ def load_government_response_data():
 
 	return df_response
 
-def load_mobility_data(smooth = False, smoothsize = 7, apple_mobility_url_base = 'https://covid19-static.cdn-apple.com/covid19-mobility-data/2023HotfixDev13/v3/en-us/applemobilitytrends-'):
+def load_mobility_data(smooth = False, smoothsize = 7, apple_mobility_url_base = 'https://covid19-static.cdn-apple.com/covid19-mobility-data/2023HotfixDev30/v3/en-us/applemobilitytrends-'):
 	"""
 	Load Apple and Google mobility data. Downloadable from:
 
@@ -1218,7 +1218,7 @@ def plot_sewage():
 	"""
 	df_sewage = load_sewage_data(smooth = True, shiftdates = True)
 
-	df_sewage = df_sewage.loc[df_sewage.index > '2020-02-05']
+	df_sewage = df_sewage.loc[df_sewage.index > '2020-08-05']
 
 	fig, ax1 = plt.subplots()
 	ax2 = ax1.twinx()
@@ -1247,7 +1247,7 @@ def plot_sewage():
 	plt.savefig(f'{plotloc}Sewage_measurements.png', dpi = 200, bbox_inches = 'tight')
 	plt.close()
 
-def plot_daily_results(use_individual_data = True):
+def plot_daily_results(use_individual_data = True, startdate = '2020-07-01'):
 	"""
 	Plot up to date test results
 	"""
@@ -1292,13 +1292,12 @@ def plot_daily_results(use_individual_data = True):
 
 
 	#select second wave of infections
-	startdate = '2020-07-01'
 	df_daily_covid = df_daily_covid.loc[df_daily_covid.index > startdate]
 	df_response = df_response.loc[df_response.index > startdate]
 
 
 	### make the plot
-	fig, ax1 = plt.subplots()
+	fig, ax1 = plt.subplots(figsize = (5, 4))
 
 	ax2 = ax1.twinx()
 	#third y axis for government response
@@ -1320,7 +1319,8 @@ def plot_daily_results(use_individual_data = True):
 
 	lns = lns1 + lns2 + lns3 + lns4 + lns5
 	labs = [l.get_label() for l in lns]
-	ax1.legend(lns, labs, loc='best')
+	ax1.legend(lns, labs, loc = 'lower left', prop = {'size': 8}) #loc = 'center', bbox_to_anchor = (0.5, -0.4), ncol = 2,
+	# fig.subplots_adjust(bottom = 0.2, right = 0.8)
 
 	if use_individual_data:
 		ax1.set_xlabel(f'Estimated infection date\n(date of disease onset - incubation period (~6 days))')
@@ -1332,14 +1332,15 @@ def plot_daily_results(use_individual_data = True):
 
 	ax1.set_title(f'SARS-CoV-2 tests in the Netherlands up to {str(df_daily_covid.index[-1].date())}')
 
-	# ax.xaxis.set_tick_params(rotation = 45)
+	ax1.xaxis.set_tick_params(rotation = 20)
 	ax1.xaxis.set_major_locator(mdates.AutoDateLocator(minticks = 3, maxticks = 6))
-	fig.autofmt_xdate()
+	# fig.autofmt_xdate()
 	myfmt = mdates.DateFormatter('%d-%m-%Y')
 	ax1.xaxis.set_major_formatter(myfmt)
 
 	ax1.set_ylim(0)
 	ax2.set_ylim(0)
+	ax3.set_ylim(0)
 
 	if use_individual_data:
 		savename = f'{plotloc}Tests_second_wave_individual_reports.png'
@@ -1822,10 +1823,14 @@ def stringency_R_correlation(enddate = '2020-11-26'):
 	ax.plot(xpoints, linear_model(xpoints, *popt), label = r'Fit ($R^2 = $' + f'{r_squared:0.03f})', color = 'black')
 
 	### now plot the effects of a variant which is more infectious
-	infectious_increase_factor = 1.4
-	xpoints = np.linspace(np.min(df_reponse_results.loc[high_stringency_mask]['StringencyIndex']), 100, num = 500)
-	ax.plot(xpoints, linear_model(xpoints, *popt) * infectious_increase_factor, label = f'SARS-COV-2 VUI 202012/01 model\n{infectious_increase_factor} times as infectious', color = betterorange)
+	mean_R_increase = 0.55
+	errorbar = 0.15
 
+	xpoints = np.linspace(np.min(df_reponse_results.loc[high_stringency_mask]['StringencyIndex']), 100, num = 500)
+	R_prediction_new_variant = linear_model(xpoints, *popt) + mean_R_increase
+
+	ax.plot(xpoints, R_prediction_new_variant, label = f'SARS-COV-2 VUI 202012/01 model\nwith mean R {mean_R_increase} higher', color = betterorange)
+	ax.fill_between(xpoints, R_prediction_new_variant - errorbar, R_prediction_new_variant + errorbar, color = betterorange, alpha = 0.4)
 
 	ax.set_xlabel('Oxford Stringency Index')
 	ax.set_ylabel(f'$R$')
@@ -2451,13 +2456,13 @@ def main():
 
 	# plot_prevalence_R()
 	# plot_mobility()
-	# plot_daily_results(use_individual_data = True)
+	plot_daily_results(use_individual_data = False, startdate = '2020-09-01')
 	# plot_sewage()
 	# plot_individual_data()
 	# plot_cluster_change()
 	#
-	# estimate_recent_R(enddate_train = '2020-11-19')
-	estimate_recent_prevalence(enddate_train = '2020-11-25')
+	# estimate_recent_R(enddate_train = '2020-12-10')
+	# estimate_recent_prevalence(enddate_train = '2020-12-16')
 
 if __name__ == '__main__':
 	main()
