@@ -627,12 +627,12 @@ def load_number_of_tests(enddate = None, ignore_last_datapoint = False):
 	Compiled into a .csv by hand
 	"""
 
-	df_n_tests = pd.read_csv(f'{dataloc}Edit_only/tests_per_week.csv', usecols = ['Week_number', 'Number_of_tests'])
+	df_n_tests = pd.read_csv(f'{dataloc}Edit_only/tests_per_week.csv', usecols = ['Year', 'Week_number', 'Number_of_tests'])
 
 	df_n_tests = df_n_tests.astype({'Week_number': str})
 
 	#get date from week number, assume the central day of the week (thursday)
-	df_n_tests['Date'] = pd.to_datetime(df_n_tests['Week_number'] + '-4-2020', format = '%W-%w-%Y')
+	df_n_tests['Date'] = pd.to_datetime((df_n_tests['Week_number'].astype(str) + '-4-') + df_n_tests['Year'].astype(str), format = '%W-%w-%Y')
 
 	df_n_tests.set_index('Date', inplace = True)
 
