@@ -48,6 +48,7 @@ time_till_recovery = 14
 betterblue = '#016FB9'
 betterorange = '#F17105'
 betterblack = '#141414'
+mplblue = 'steelblue'
 
 ### dateshift values needed to correct for the delay between the onset of
 ### symptoms and the result of the test
@@ -353,8 +354,9 @@ def load_prevalence_R0_data():
 	downloadSave(url_prevalence, fname_prevalence, check_file_exists = True)
 	downloadSave(url_R0, fname_R0, check_file_exists = True)
 
-	df_prevalence = pd.read_json(fname_prevalence)
-	df_R0 = pd.read_json(fname_R0)
+	df_prevalence = pd.read_json(fname_prevalence)[['Date', 'prev_avg', 'prev_low',
+	'prev_up']]
+	df_R0 = pd.read_json(fname_R0)[['Date', 'Rt_avg', 'Rt_low', 'Rt_up']]
 
 	df_prevalence.set_index('Date', inplace = True)
 	df_R0.set_index('Date', inplace = True)
@@ -1648,6 +1650,86 @@ def plot_R_versus_weather(startdate = '2020-06-15'):
 	plt.savefig(f'{R_plotloc}R_dependence_weather.png', dpi = 200, bbox_inches = 'tight')
 	plt.close()
 
+def plot_longterm_prevalence_decay(given_R = 0.9, enddate = '2021-05-01'):
+	"""
+	Plot the decay of the prevalence at a given R regime in the future
+	"""
+	df_prevalence, df_R0 = load_prevalence_R0_data()
+	# df_response = load_government_response_data()
+
+	#filter on starting date
+	startdate = '2020-03-01'
+	df_prevalence = df_prevalence.loc[df_prevalence.index > startdate]
+	df_R0 = df_R0.loc[df_R0.index > startdate]
+	# df_response = df_response.loc[df_response.index > startdate]
+
+	#find last date with known prevalence
+	last_prev_date = df_prevalence.loc[df_prevalence['prev_avg'].notna()].index[-1]
+	#find last date with known R
+	last_R_date = df_R0.loc[df_R0['Rt_avg'].notna()].index[-1]
+
+	enddate = pd.to_datetime(enddate, format = '%Y-%m-%d')
+
+	timestep_size = 1
+
+	#create rows to desired date
+	while df_prevalence.index[-1] < enddate:
+		df_prevalence.loc[df_prevalence.index[-1] + pd.Timedelta(f'{timestep_size} day')] = [np.nan]*3
+	while df_R0.index[-1] < enddate:
+		df_R0.loc[df_R0.index[-1] + pd.Timedelta(f'{timestep_size} day')] = [np.nan]*3
+
+	#fill last rows of R dataframe with given R
+	df_R0 = df_R0.set_value(df_R0.index[df_R0.index > last_R_date], 'Rt_avg', given_R)
+
+	#determine which rows need filling
+	fillmask = df_prevalence.index > last_prev_date
+	already_known_mask = df_prevalence.index <= last_prev_date
+	#determine number of days since end of known prevalence
+	n_days = np.array((df_prevalence.loc[fillmask].index - last_prev_date).days)
+
+	#predict coming decay based on R and current decay
+	predicted_prev = exponential_model(df_prevalence.loc[last_prev_date]['prev_avg'], given_R, n_days, serial_interval)
+	df_prevalence.loc[fillmask,'prev_avg'] = predicted_prev
+
+	fig, ax1 = plt.subplots()
+	ax2 = ax1.twinx()
+
+	#plot known prevalence
+	ln1 = ax1.plot(df_prevalence.loc[already_known_mask].index, df_prevalence.loc[already_known_mask]['prev_avg'], label = 'Prevalence (known)', color = mplblue)
+	ax1.fill_between(df_prevalence.loc[already_known_mask].index, df_prevalence.loc[already_known_mask]['prev_low'], df_prevalence.loc[already_known_mask]['prev_up'], alpha = 0.4, color = mplblue)
+
+	#plot predicted prevalence
+	ln2 = ax1.plot(df_prevalence.loc[fillmask].index, df_prevalence.loc[fillmask]['prev_avg'], label = 'Prevalence (predicted)', linestyle = '--', color = mplblue)
+
+	#plot known R
+	known_R_mask = df_R0.index <= last_R_date
+	ln3 = ax2.plot(df_R0.loc[known_R_mask].index, df_R0.loc[known_R_mask]['Rt_avg'], color = 'maroon', label = r'$R$ (known)')
+	ax2.fill_between(df_R0.loc[known_R_mask].index, df_R0.loc[known_R_mask]['Rt_low'], df_R0.loc[known_R_mask]['Rt_up'], alpha = 0.4, color = 'maroon')
+
+	#plot given R
+	ln4 = ax2.plot(df_R0.loc[df_R0.index > last_R_date].index, df_R0.loc[df_R0.index > last_R_date]['Rt_avg'], color = 'maroon', label = r'$R$ (set)', linestyle = '--')
+
+	ax1.set_ylim(0)
+	ax2.set_ylim(0, 2.6)
+
+	lns = ln1 + ln2 + ln3 + ln4
+	labs = [l.get_label() for l in lns]
+	ax2.legend(lns, labs, loc = 'best')
+
+	ax1.grid(linestyle = ':', axis = 'x')
+	ax2.grid(linestyle = ':', axis = 'y')
+
+	ax1.xaxis.set_tick_params(rotation = 45)
+
+	# fig.autofmt_xdate()
+
+	ax1.set_ylabel('Prevalence (estimated active cases per million)')
+	ax2.set_ylabel(r'Reproductive number $R$')
+
+	ax1.set_title('COVID-19 statistics of the Netherlands')
+
+	plt.savefig(f'{plotloc}longterm_prevalence_decay_R={given_R}.png', dpi = 200, bbox_inches = 'tight')
+
 
 def government_response_results_simple():
 	"""
@@ -1823,10 +1905,8 @@ def stringency_R_correlation(enddate = '2020-11-26'):
 	cmap = plt.get_cmap('viridis')
 	cNorm = mcolors.Normalize(vmin = 0, vmax = len(df_reponse_results['N_days']) - 1)
 	scalarMap = cmx.ScalarMappable(norm = cNorm, cmap = cmap)
-	point_colours = scalarMap.to_rgba(df_reponse_results['N_days'])
 
-
-	ax.scatter(df_reponse_results['StringencyIndex'], df_reponse_results['Rt_avg'], facecolor = point_colours, edgecolor = 'none', alpha = 0.7, s = 10, label = 'RIVM inferred $R$')
+	scatterplot = ax.scatter(df_reponse_results['StringencyIndex'], df_reponse_results['Rt_avg'], facecolor = scalarMap.to_rgba(df_reponse_results['N_days']), edgecolor = 'none', alpha = 0.7, s = 10, label = 'RIVM inferred $R$')
 
 	#plot the model
 	xpoints = np.linspace(np.min(df_reponse_results.loc[high_stringency_mask]['StringencyIndex']), np.max(df_reponse_results.loc[high_stringency_mask]['StringencyIndex']), num = 500)
@@ -1841,6 +1921,7 @@ def stringency_R_correlation(enddate = '2020-11-26'):
 
 	ax.plot(xpoints, R_prediction_new_variant, label = f'SARS-COV-2 20B/501Y.V1 model\nwith mean R {mean_R_increase} higher', color = betterorange)
 	ax.fill_between(xpoints, R_prediction_new_variant - errorbar, R_prediction_new_variant + errorbar, color = betterorange, alpha = 0.4)
+
 
 	ax.set_xlabel('Oxford Stringency Index')
 	ax.set_ylabel(f'$R$')
@@ -2460,9 +2541,10 @@ def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 5):
 def main():
 	# government_response_results_simple()
 	# plot_hospitalization()
-	stringency_R_correlation(enddate = '2020-12-24')
+	# stringency_R_correlation(enddate = '2020-12-24')
 	# plot_superspreader_events()
 	# plot_R_versus_weather()
+	plot_longterm_prevalence_decay(given_R = 0.7)
 
 	# plot_daily_results(use_individual_data = True, startdate = '2020-09-01')
 	# plot_prevalence_R()
