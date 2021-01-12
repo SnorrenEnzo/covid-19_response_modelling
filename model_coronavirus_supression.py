@@ -10,6 +10,8 @@ import matplotlib.cm as cmx
 from matplotlib.ticker import MaxNLocator
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 # import matplotlib.patches as mpatches
+from turbo_colormap import turbo_colormap_data
+turbo_cmap = mcolors.ListedColormap(turbo_colormap_data)
 
 import urllib.request
 from urllib.error import HTTPError
@@ -447,7 +449,7 @@ def load_government_response_data():
 
 	return df_response
 
-def load_mobility_data(smooth = False, smoothsize = 7, apple_mobility_url_base = 'https://covid19-static.cdn-apple.com/covid19-mobility-data/2023HotfixDev30/v3/en-us/applemobilitytrends-'):
+def load_mobility_data(smooth = False, smoothsize = 7, apple_mobility_url_base = 'https://covid19-static.cdn-apple.com/covid19-mobility-data/2024HotfixDev7/v3/en-us/applemobilitytrends-'):
 	"""
 	Load Apple and Google mobility data. Downloadable from:
 
@@ -632,7 +634,7 @@ def load_number_of_tests(enddate = None, ignore_last_datapoint = False):
 	df_n_tests = df_n_tests.astype({'Week_number': str})
 
 	#get date from week number, assume the central day of the week (thursday)
-	df_n_tests['Date'] = pd.to_datetime((df_n_tests['Week_number'].astype(str) + '-4-') + df_n_tests['Year'].astype(str), format = '%W-%w-%Y')
+	df_n_tests['Date'] = pd.to_datetime(df_n_tests['Week_number'].astype(str) + '-4-' + df_n_tests['Year'].astype(str), format = '%W-%w-%Y')
 
 	df_n_tests.set_index('Date', inplace = True)
 
@@ -1811,12 +1813,20 @@ def stringency_R_correlation(enddate = '2020-11-26'):
 						df_reponse_results.loc[high_stringency_mask]['StringencyIndex'],
 						df_reponse_results.loc[high_stringency_mask]['Rt_avg'])
 
-
+	#get number of days since start as another column
+	df_reponse_results['N_days'] = (df_reponse_results.index - df_reponse_results.index[0]).days
 
 	### plot results
 	fig, ax = plt.subplots()
 
-	ax.scatter(df_reponse_results['StringencyIndex'], df_reponse_results['Rt_avg'], color = 'maroon', alpha = 0.6, s = 8, label = 'RIVM inferred $R$')
+	## we want to color the points by the age since the start of the pandemic
+	cmap = plt.get_cmap('viridis')
+	cNorm = mcolors.Normalize(vmin = 0, vmax = len(df_reponse_results['N_days']) - 1)
+	scalarMap = cmx.ScalarMappable(norm = cNorm, cmap = cmap)
+	point_colours = scalarMap.to_rgba(df_reponse_results['N_days'])
+
+
+	ax.scatter(df_reponse_results['StringencyIndex'], df_reponse_results['Rt_avg'], facecolor = point_colours, edgecolor = 'none', alpha = 0.7, s = 10, label = 'RIVM inferred $R$')
 
 	#plot the model
 	xpoints = np.linspace(np.min(df_reponse_results.loc[high_stringency_mask]['StringencyIndex']), np.max(df_reponse_results.loc[high_stringency_mask]['StringencyIndex']), num = 500)
@@ -1829,13 +1839,13 @@ def stringency_R_correlation(enddate = '2020-11-26'):
 	xpoints = np.linspace(np.min(df_reponse_results.loc[high_stringency_mask]['StringencyIndex']), 100, num = 500)
 	R_prediction_new_variant = linear_model(xpoints, *popt) + mean_R_increase
 
-	ax.plot(xpoints, R_prediction_new_variant, label = f'SARS-COV-2 VUI 202012/01 model\nwith mean R {mean_R_increase} higher', color = betterorange)
+	ax.plot(xpoints, R_prediction_new_variant, label = f'SARS-COV-2 20B/501Y.V1 model\nwith mean R {mean_R_increase} higher', color = betterorange)
 	ax.fill_between(xpoints, R_prediction_new_variant - errorbar, R_prediction_new_variant + errorbar, color = betterorange, alpha = 0.4)
 
 	ax.set_xlabel('Oxford Stringency Index')
 	ax.set_ylabel(f'$R$')
 
-	ax.grid(linestyle = ':')
+	ax.grid(linestyle = ':', zorder = -10)
 	ax.legend(loc = 'best', prop={'size': 9})
 
 	ax.set_title(r'$R$ versus stringency index of Dutch coronavirus reponse')
@@ -2450,19 +2460,19 @@ def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 5):
 def main():
 	# government_response_results_simple()
 	# plot_hospitalization()
-	# stringency_R_correlation()
+	stringency_R_correlation(enddate = '2020-12-24')
 	# plot_superspreader_events()
 	# plot_R_versus_weather()
 
+	# plot_daily_results(use_individual_data = True, startdate = '2020-09-01')
 	# plot_prevalence_R()
 	# plot_mobility()
-	plot_daily_results(use_individual_data = False, startdate = '2020-09-01')
 	# plot_sewage()
 	# plot_individual_data()
 	# plot_cluster_change()
 	#
-	# estimate_recent_R(enddate_train = '2020-12-10')
-	# estimate_recent_prevalence(enddate_train = '2020-12-16')
+	# estimate_recent_R(enddate_train = '2020-12-24')
+	# estimate_recent_prevalence(enddate_train = '2020-12-30')
 
 if __name__ == '__main__':
 	main()
