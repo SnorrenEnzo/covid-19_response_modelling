@@ -1937,7 +1937,7 @@ def stringency_R_correlation(enddate = '2020-11-26'):
 	plt.close()
 
 
-def estimate_recent_R(enddate_train = '2020-10-25'):
+def estimate_recent_R(enddate_train = '2020-10-25', regression_method = 'ridge'):
 	"""
 	Estimate the reproductive number R with mobility data
 	"""
@@ -2156,6 +2156,8 @@ def estimate_recent_R(enddate_train = '2020-10-25'):
 		weight = 1/np.array(df_train['Rt_abs_error'])
 
 		###split into train and test set
+		'''
+		## perform simple elementwise random splitting
 		rs = ShuffleSplit(n_splits = 1, test_size = 0.2, random_state = 1923)
 
 		#get splitting indices
@@ -2170,15 +2172,44 @@ def estimate_recent_R(enddate_train = '2020-10-25'):
 		X_test = X[test_index]
 		Y_test = Y[test_index]
 		weight_test = weight[test_index]
+		'''
+
+		## split off a test set being a continuous segment of data, which will give
+		## a more robust evaluation
+		#length of test segment in days
+		test_set_days_length = 30
+		test_set_days_length_timedelta = pd.Timedelta(f'{test_set_days_length} day')
+		#get array of dates from which we will randomly pick a starting date
+		startdate_array = df_train.loc[df_train.index < (df_train.index[-1] - test_set_days_length_timedelta)].index.values
+
+		np.random.seed(1923)
+
+		test_segment_startdate = np.random.choice(startdate_array, 1)[0]
+		testmask = (df_train.index > test_segment_startdate) & (df_train.index <= (test_segment_startdate + test_set_days_length_timedelta))
+
+		test_index = np.where(testmask)[0]
+
+		X_train = dataframes_to_NDarray(df_train.loc[~testmask], best_correlating_metrics)
+		Y_train = df_train.loc[~testmask]['Rt_avg'].values
+		weight_train = 1/df_train.loc[~testmask]['Rt_abs_error'].values
+
+		X_test = dataframes_to_NDarray(df_train.loc[testmask], best_correlating_metrics)
+		Y_test = df_train.loc[testmask]['Rt_avg'].values
+		weight_test = 1/df_train.loc[testmask]['Rt_abs_error'].values
+
 
 		#apply ridge regression, see here for more info:
 		#https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.Ridge.html#sklearn.linear_model.Ridge
-		clf = Ridge(alpha = 1.)
-		# clf = Lasso()
-		#apply adaboost regression, see here for more info:
-		#https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.AdaBoostRegressor.html#sklearn.ensemble.AdaBoostRegressor
-		# clf = AdaBoostRegressor()
-		# clf = RandomForestRegressor()
+		if regression_method.lower() == 'ridge':
+			clf = Ridge(alpha = 1)
+		elif regression_method.lower() == 'linear':
+			clf = LinearRegression()
+		elif regression_method.lower() == 'adaboost':
+			clf = AdaBoostRegressor()
+		elif regression_method.lower() == 'randomforest':
+			clf = RandomForestRegressor()
+		else:
+			raise ValueError('Incorrect regression method given')
 		clf.fit(X_train, Y_train, sample_weight = weight_train)
 		# clf.fit(X_train, Y_train)
 
@@ -2219,7 +2250,7 @@ def estimate_recent_R(enddate_train = '2020-10-25'):
 		### now make and plot predictions
 		X_pred = dataframes_to_NDarray(df_pred, best_correlating_metrics)
 
-		Y_pred = clf.predict(X_pred)
+		df_pred['Rt_pred'] = clf.predict(X_pred)
 
 
 		fig, ax1 = plt.subplots()
@@ -2230,19 +2261,32 @@ def estimate_recent_R(enddate_train = '2020-10-25'):
 		#indicate error margins on ground truth
 		ax1.fill_between(df_pred.index, df_pred['Rt_low'], df_pred['Rt_up'], alpha = 0.4, color = betterblue)
 
-		ln2 = ax1.plot(df_pred.index, Y_pred, label = f'Prediction (Test $R^2$: {r_squared_test:0.03f})', color = betterorange)
+		## plot prediction
+		# ln2 = ax1.plot(df_pred.index, df_pred['Rt_pred'], label = f'Prediction (Test $R^2$: {r_squared_test:0.03f})', color = betterorange)
+		#get test set mask for this new dataframe
+		testmask_forplot = (df_pred.index > test_segment_startdate) & (df_pred.index <= (test_segment_startdate + test_set_days_length_timedelta))
+
+		#train/pred
+		#set values at test set to nan so that no line is plotted there
+		df_pred_plot = df_pred.copy()
+		df_pred_plot = df_pred_plot.set_value(df_pred_plot.loc[testmask_forplot].index, 'Rt_pred', np.nan)
+		ln2 = ax1.plot(df_pred_plot.index, df_pred_plot['Rt_pred'], label = f'{regression_method} prediction without test set', color = betterorange)
+
+		#test set
+		ln3 = ax1.plot(df_pred.loc[testmask_forplot].index, df_pred.loc[testmask_forplot]['Rt_pred'], label = f'{regression_method} prediction test set ($R^2 = {r_squared_test:0.03f}$)', color = betterorange, linestyle = '--')
+
 
 		#also plot government response
 		#limit to days with prediction data
 		df_response_plot = df_response_plot.loc[df_response_plot.index <= df_pred.index[-1]]
-		ln3 = ax2.plot(df_response_plot.index, df_response_plot['StringencyIndex'], label = 'Stringency index', color = betterblack)
+		ln4 = ax2.plot(df_response_plot.index, df_response_plot['StringencyIndex'], label = 'Stringency index', color = betterblack)
 
 		ax1.grid(linestyle = ':')
 		# ax.legend(loc = 'best')
 
-		lns = ln1 + ln2 + ln3
+		lns = ln1 + ln2 + ln3 + ln4
 		labs = [l.get_label() for l in lns]
-		ax1.legend(lns, labs, loc = 'lower left')
+		ax1.legend(lns, labs, loc = 'lower left', prop = {'size': 8})
 
 		ax1.set_ylabel('$R$')
 		ax2.set_ylabel('Oxford Stringency Index')
@@ -2599,11 +2643,11 @@ def main():
 	# plot_prevalence_R()
 	# plot_mobility()
 	# plot_sewage()
-	# plot_individual_data()
+	plot_individual_data()
 	# plot_cluster_change()
 
-	# estimate_recent_R(enddate_train = '2020-12-24')
-	estimate_recent_prevalence(enddate_train = '2020-12-30', regression_method = 'AdaBoost')
+	# estimate_recent_R(enddate_train = '2020-12-24', regression_method = 'Ridge')
+	# estimate_recent_prevalence(enddate_train = '2020-12-30', regression_method = 'AdaBoost')
 
 if __name__ == '__main__':
 	main()
