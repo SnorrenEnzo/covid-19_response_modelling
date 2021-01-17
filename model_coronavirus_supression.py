@@ -1468,6 +1468,9 @@ def plot_individual_data(use_agegroups = True):
 	"""
 	df_individual = load_individual_positive_test_data(load_agegroups = use_agegroups)
 
+	#correct the overall results to the day of infection
+	df_individual.index = df_individual.index - pd.Timedelta(f'{int(incubation_period)} day')
+
 	#select recent data
 	df_individual = df_individual.loc[df_individual.index >= '2020-08-01']
 
@@ -1499,7 +1502,7 @@ def plot_individual_data(use_agegroups = True):
 			ax.set_xticks(np.arange(0, imgdata.shape[1], 14))
 			ax.set_xticklabels(list(x_labeldates.dt.strftime('%d-%m-%Y')))
 
-			ax.set_xlabel('Date of disease onset')
+			ax.set_xlabel('Estimated date of infection (date of disease onset - incubation period)')
 			ax.set_ylabel('Age group')
 
 			ax.set_title('Percentage of people per age group tested positive per day')
@@ -1532,13 +1535,16 @@ def plot_individual_data(use_agegroups = True):
 
 			indicate_school_closed(ax)
 
+			#indicate period where not yet everyone who will be tested, has been
+			shade_region(ax, np.array([df_individual.index[-1] - pd.Timedelta(f'{5} day'), df_individual.index[-1]], dtype = np.datetime64), colour = 'red', alpha = 0.2, label = None)
+
 			#fix the date labels
 			ax.set_xticks(pd.date_range(np.min(df_individual.index), np.max(df_individual.index), freq = '14D', format = '%d-%m-%Y').to_series())
 			fig.autofmt_xdate()
 			myfmt = mdates.DateFormatter('%d-%m-%Y')
 			ax.xaxis.set_major_formatter(myfmt)
 
-			ax.set_xlabel('Date of disease onset')
+			ax.set_xlabel('Estimated date of infection (date of disease onset - incubation period)')
 			ax.set_ylabel('Percentage of people in age group')
 			ax.set_title('Percentage of people per age group tested positive each day')
 
