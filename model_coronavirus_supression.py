@@ -533,7 +533,7 @@ def load_mobility_data(smooth = False, smoothsize = 7, apple_mobility_url_base =
 		today = dt.datetime.now().date()
 		apple_mob_fname = f'{dataloc}applemobilitytrends-'
 		#make the possible urls, starting with the most recent date
-		for minday in range(8):
+		for minday in range(14):
 			possible_date = today - dt.timedelta(days = minday)
 			apple_mob_possible_url = f'{apple_mobility_url_base}{possible_date}.csv'
 
@@ -677,6 +677,8 @@ def load_sewage_data(smooth = False, windowsize = 3, shiftdates = False):
 	df_sewage['RNA_flow_per_100000'] /= 100e9
 
 	#only take "representative measurements" which span 24 hours instead of a single moment
+	#remove nans
+	df_sewage = df_sewage.loc[df_sewage['Representative_measurement'].notna()]
 	df_sewage = df_sewage.loc[df_sewage['Representative_measurement']]
 	del df_sewage['Representative_measurement']
 
@@ -2259,7 +2261,7 @@ def estimate_recent_R(enddate_train = '2020-10-25'):
 		plt.savefig(f'{R_plotloc}Mobility_R_prediction.png', dpi = 200, bbox_inches = 'tight')
 		plt.close()
 
-def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 5):
+def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 5, regression_method = 'Linear'):
 	"""
 	Estimate the recent prevalence based on the test positivity ratio
 	"""
@@ -2270,7 +2272,7 @@ def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 5):
 	df_prevalence, df_R0 = load_prevalence_R0_data()
 	df_overall_positive_tests = load_daily_covid(correct_for_delay = False)
 	df_individual = load_individual_positive_test_data(load_agegroups = True)
-	df_n_tests = load_number_of_tests()
+	df_n_tests = load_number_of_tests(enddate = np.datetime64('today'))
 	df_sewage = load_sewage_data(smooth = True, shiftdates = False)
 	#for the plot as a reference
 	df_response = load_government_response_data()
@@ -2348,6 +2350,8 @@ def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 5):
 	df_predictors_cor = df_predictors_sel.loc[df_predictors_sel.index > startdate_for_cor]
 	df_prevalence_cor = df_prevalence_sel.loc[df_prevalence_sel.index > startdate_for_cor]
 
+	### Choose parameters to use
+
 	parameters_used = [
 	'RNA_flow_smooth'
 	] + agegroup_cols
@@ -2379,7 +2383,7 @@ def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 5):
 	weight = 1/np.array(df_prevalence_cor['prev_abs_error'])
 
 	### plot correlation matrix
-	if True:
+	if False:
 		corr_matrix = np.corrcoef(np.concatenate((Y[:,None], X), axis = 1).T)
 
 		compare_parameters_names = ['Prevalence'] + [param.replace('_smooth', '') for param in parameters_used]
@@ -2415,6 +2419,8 @@ def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 5):
 		plt.close()
 
 	###split into train and test set
+	'''
+	## use a random split
 	rs = ShuffleSplit(n_splits = 1, test_size = 0.4, random_state = 1923)
 
 	#get splitting indices
@@ -2429,12 +2435,43 @@ def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 5):
 	X_test = X[test_index]
 	Y_test = Y[test_index]
 	weight_test = weight[test_index]
+	'''
+
+	## split off a test set being a continuous segment of data, which will give
+	## a more robust evaluation
+	#length of test segment in days
+	test_set_days_length = 20
+	test_set_days_length_timedelta = pd.Timedelta(f'{test_set_days_length} day')
+	#get array of dates from which we will randomly pick a starting date
+	startdate_array = df_prevalence_cor.loc[df_prevalence_cor.index < (df_prevalence_cor.index[-1] - test_set_days_length_timedelta)].index.values
+
+	np.random.seed(2000)
+
+	test_segment_startdate = np.random.choice(startdate_array, 1)[0]
+	testmask = (df_predictors_cor.index > test_segment_startdate) & (df_predictors_cor.index <= (test_segment_startdate + test_set_days_length_timedelta))
+
+	test_index = np.where(testmask)[0]
+
+	X_train = dataframes_to_NDarray(df_predictors_cor.loc[~testmask], parameters_used)
+	Y_train = df_prevalence_cor.loc[~testmask]['prev_avg'].values
+	weight_train = 1/df_prevalence_cor.loc[~testmask]['prev_abs_error'].values
+
+	X_test = dataframes_to_NDarray(df_predictors_cor.loc[testmask], parameters_used)
+	Y_test = df_prevalence_cor.loc[testmask]['prev_avg'].values
+	weight_test = 1/df_prevalence_cor.loc[testmask]['prev_abs_error'].values
+
 
 	### apply regression
-	# clf = Ridge(alpha = 1.)
-	clf = LinearRegression()
-	# clf = AdaBoostRegressor()
-	# clf = RandomForestRegressor()
+	if regression_method.lower() == 'ridge':
+		clf = Ridge(alpha = 1)
+	elif regression_method.lower() == 'linear':
+		clf = LinearRegression()
+	elif regression_method.lower() == 'adaboost':
+		clf = AdaBoostRegressor()
+	elif regression_method.lower() == 'randomforest':
+		clf = RandomForestRegressor()
+	else:
+		raise ValueError('Incorrect regression method given')
 	clf.fit(X_train, Y_train, sample_weight = weight_train)
 	# clf.fit(X_train, Y_train)
 
@@ -2443,6 +2480,7 @@ def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 5):
 
 	print(f'Train R^2: {r_squared_train:0.03f}')
 	print(f'Test R^2: {r_squared_test:0.03f}')
+	print(f'Test set segment from {test_segment_startdate.astype("datetime64[D]")} to {np.datetime64(test_segment_startdate + test_set_days_length_timedelta).astype("datetime64[D]")}')
 
 
 	### plot accuracy of predictions using the predictions versus ground truth
@@ -2463,7 +2501,7 @@ def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 5):
 	startpoint = min((min(xlims), min(ylims)))
 	endpoint = max((max(xlims), max(ylims)))
 
-	ax.plot([startpoint, endpoint], [startpoint, endpoint], color = 'black', label = 'Ideal predictions (linear model)')
+	ax.plot([startpoint, endpoint], [startpoint, endpoint], color = 'black', label = f'Ideal predictions ({regression_method.lower()} model)')
 	ax.set_xlim(xlims)
 	ax.set_ylim(ylims)
 
@@ -2503,12 +2541,23 @@ def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 5):
 	#show error bars
 	ax1.fill_between(df_prevalence_sel.index, df_prevalence_sel['prev_low'], df_prevalence_sel['prev_up'], alpha = 0.4, color = betterblue)
 
-	#predictions
-	ln2 = ax1.plot(df_prevalence_pred.index, df_prevalence_pred['Prev_pred'], label = f'Linear prediction (Test $R^2 = {r_squared_test:0.03f}$)', color = betterorange)
+	### predictions - plot test set separately
+	#get test set mask for this new dataframe
+	testmask_forplot = (df_prevalence_pred.index > test_segment_startdate) & (df_prevalence_pred.index <= (test_segment_startdate + test_set_days_length_timedelta))
+
+	#train/pred
+	#set values at test set to nan so that no line is plotted there
+	df_prevalence_pred_plot = df_prevalence_pred.copy()
+	df_prevalence_pred_plot = df_prevalence_pred_plot.set_value(df_prevalence_pred_plot.loc[testmask_forplot].index, 'Prev_pred', np.nan)
+	ln2 = ax1.plot(df_prevalence_pred_plot.index, df_prevalence_pred_plot['Prev_pred'], label = f'{regression_method} prediction without test set', color = betterorange)
+
+	#test set
+	ln3 = ax1.plot(df_prevalence_pred.loc[testmask_forplot].index, df_prevalence_pred.loc[testmask_forplot]['Prev_pred'], label = f'{regression_method} prediction test set ($R^2 = {r_squared_test:0.03f}$)', color = betterorange, linestyle = '--')
+
 
 	#also plot government response
 	df_response_plot = df_response.loc[df_response.index <= df_prevalence_pred.index[-1]]
-	ln3 = ax2.plot(df_response_plot.index, df_response_plot['StringencyIndex'], label = 'Stringency index', color = betterblack)
+	ln4 = ax2.plot(df_response_plot.index, df_response_plot['StringencyIndex'], label = 'Stringency index', color = betterblack)
 
 	ax1.grid(linestyle = ':')
 
@@ -2517,9 +2566,9 @@ def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 5):
 
 	ax1.set_title('COVID-19 estimated active cases in the Netherlands\nwith prediction of recent days')
 
-	lns = ln1 + ln2 + ln3
+	lns = ln1 + ln2 + ln3 + ln4
 	labs = [l.get_label() for l in lns]
-	ax1.legend(lns, labs, loc = 'lower right', prop = {'size': 10})
+	ax1.legend(lns, labs, loc = 'lower right', prop = {'size': 8})
 
 	indicate_school_closed(ax1)
 
@@ -2544,7 +2593,7 @@ def main():
 	# stringency_R_correlation(enddate = '2020-12-24')
 	# plot_superspreader_events()
 	# plot_R_versus_weather()
-	plot_longterm_prevalence_decay(given_R = 0.7)
+	# plot_longterm_prevalence_decay(given_R = 0.7)
 
 	# plot_daily_results(use_individual_data = True, startdate = '2020-09-01')
 	# plot_prevalence_R()
@@ -2552,9 +2601,9 @@ def main():
 	# plot_sewage()
 	# plot_individual_data()
 	# plot_cluster_change()
-	#
+
 	# estimate_recent_R(enddate_train = '2020-12-24')
-	# estimate_recent_prevalence(enddate_train = '2020-12-30')
+	estimate_recent_prevalence(enddate_train = '2020-12-30', regression_method = 'AdaBoost')
 
 if __name__ == '__main__':
 	main()
