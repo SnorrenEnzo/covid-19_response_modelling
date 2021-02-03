@@ -1922,23 +1922,37 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 	def dDdt(param, pop):
 		return param['mu'] * pop['I']
 
-	def plot_epidemiological_model(df_pop):
+	def plot_epidemiological_model(df_pop, IC_frac_of_I):
 		df_pop.set_index('Days', inplace = True)
 
 
-		fig, ax = plt.subplots()
+		fig, ax1 = plt.subplots()
+
+		ax2 = ax1.twinx()
 
 		params_to_plot = ['S', 'E', 'I', 'D']
 
+		#we can estimate the number of people on the IC based on the fraction
+		#of infectious people that end up on the IC, see plot_hospitalization
+		lns = ax2.plot(df_pop.index, IC_frac_of_I*df_pop['I']/1e3, label = 'IC', color = 'black')
+
 		for p in params_to_plot:
-			ax.plot(df_pop.index, df_pop[p]/1e6, label = p)
+			lns += ax1.plot(df_pop.index, df_pop[p]/1e6, label = p)
 
-		ax.grid(linestyle = ':')
+		#also show IC limit based on https://covid-analytics.nl/index.html
+		xlims = ax2.get_xlim()
+		ax2.hlines(2500/1e3, xlims[0], xlims[1], color = 'dimgray', linestyle = '--')
+		ax2.set_xlim(xlims)
 
-		ax.set_xlabel('Days since start')
-		ax.set_ylabel('Number of people [M]')
+		ax1.grid(linestyle = ':')
 
-		ax.legend(loc = 'best')
+		ax1.set_xlabel('Days since start')
+		ax1.set_ylabel('Number of people [M]')
+		ax2.set_ylabel('Number of people on IC [K]')
+
+		labs = [l.get_label() for l in lns]
+		ax1.legend(lns, labs, loc='best')
+		ax1.grid(linestyle = ':')
 
 		plt.savefig(f'{epidem_modelling_plotloc}Model_result_population.png', dpi = 200, bbox_inches = 'tight')
 		plt.close()
@@ -1954,6 +1968,8 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 	dt = 1
 	N_days = 300
 	N_steps = int(N_days/dt)
+
+	IC_frac_of_I = 0.005
 
 	### First set several rate parameters
 	a = 1/2.5 #person is about 2.5 days not contagious
@@ -2006,7 +2022,7 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 
 		df_pop = df_pop.append(pop, ignore_index = True)
 
-	plot_epidemiological_model(df_pop)
+	plot_epidemiological_model(df_pop, IC_frac_of_I)
 
 
 
@@ -2766,13 +2782,13 @@ def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 5, reg
 
 def main():
 	# government_response_results_simple()
-	plot_hospitalization()
+	# plot_hospitalization()
 	# stringency_R_correlation(enddate = '2021-01-07')
 	# plot_superspreader_events()
 	# plot_R_versus_weather()
 	# plot_longterm_prevalence_decay(given_R = 0.9)
 
-	# epidemiological_modelling()
+	epidemiological_modelling()
 
 	# plot_daily_results(use_individual_data = True, startdate = '2020-09-01')
 	# plot_prevalence_R()

@@ -136,7 +136,7 @@ No "recovered" state R is present, because immunity does not last long.
 
 Here:
 - beta: infection rate (1/beta: time between infections) S -> E
-- a: incubation rate (1/a: incubation period) E -> I
+- a: exposed rate (1/a: period that person is exposed but not yet infectuous, NOT incubation period) E -> I
 - gamma: recovery rate (1/gamma: average recovery time) I -> S
 - mu: death rate (mu = IFR/T_death) I -> D
 
@@ -154,7 +154,7 @@ Differential equations defining the model:
 Exposure period 1/a (NOT YET INFECTIOUS, average, exponential distribution with parameter a):
 - Can't be really determined, let's set it to 2 days for now
 
-Average time of infection 1/beta (serial/generation interval). Generally a day shorter than the incubation time.
+Average time of infection 1/beta (serial/generation interval). Generally a day shorter than the incubation time. For Rt = R0 ~ 3, 1/beta ~ 4 days.
 - 4.7 days, based on 28 cases, looks like gamma distribution 4-2020 [link](https://www.sciencedirect.com/science/article/pii/S1201971220301193)
 - 3.96 days, based on 468 cases 26-6-2020 [link](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC7258488/)
 - ~4.1 days, based on 1407 cases 18-6-2020 [link](https://academic.oup.com/cid/advance-article/doi/10.1093/cid/ciaa790/5859582)
