@@ -18,6 +18,7 @@ from urllib.error import HTTPError
 import shutil
 import os, sys, glob
 from zipfile import ZipFile
+from tqdm import tqdm
 
 import datetime as dt
 
@@ -690,7 +691,7 @@ def load_sewage_data(smooth = False, windowsize = 3, shiftdates = False):
 
 	return df_sewage
 
-def load_IC_data():
+def load_IC_data(get_change = False):
 	"""
 	Load IC data, see https://www.databronnencovid19.nl/Bron?naam=Nationale-Intensive-Care-Evaluatie
 	"""
@@ -730,23 +731,26 @@ def load_IC_data():
 	df_IC_count.set_index('Date', inplace = True)
 	df_IC_new.set_index('Date', inplace = True)
 
-	#join dataframes
-	df_IC = df_IC_count.join(df_IC_new)
+	if get_change:
+		#join dataframes
+		df_IC = df_IC_count.join(df_IC_new)
 
-	#determine how many people left the IC (alive or not)
-	df_IC['Removed'] = df_IC['Amount'].diff() - df_IC['New']
-	#set first entry to zero so that we can convert to ints again
-	df_IC['Removed'].iloc[0] = 0
-	df_IC['Removed'] = df_IC['Removed'].astype(int)
-	#there are a few cases in this field where there are extra people coming in
-	#probably due to errors in reporting. Shift these to new
-	loc = df_IC['Removed'] > 0
-	df_IC['New'].values[loc] += df_IC['Removed'].values[loc]
-	df_IC['Removed'].values[loc] = 0
+		#determine how many people left the IC (alive or not)
+		df_IC['Removed'] = df_IC['Amount'].diff() - df_IC['New']
+		#set first entry to zero so that we can convert to ints again
+		df_IC['Removed'].iloc[0] = 0
+		df_IC['Removed'] = df_IC['Removed'].astype(int)
+		#there are a few cases in this field where there are extra people coming in
+		#probably due to errors in reporting. Shift these to new
+		loc = df_IC['Removed'] > 0
+		df_IC['New'].values[loc] += df_IC['Removed'].values[loc]
+		df_IC['Removed'].values[loc] = 0
 
-	df_IC['Removed'] = df_IC['Removed'].abs()
+		df_IC['Removed'] = df_IC['Removed'].abs()
 
-	return df_IC
+		return df_IC
+	else:
+		return df_IC_count
 
 def load_superspreader_events_data():
 	"""
@@ -1344,23 +1348,35 @@ def plot_hospitalization():
 
 	"""
 	df_IC = load_IC_data()
+	df_prevalence, df_Rt = load_prevalence_Rt_data()
 
-	print(df_IC)
+	### determine fraction of infected people on the IC
+	#first go back to absolute number of people infectious
+	df_prevalence['prev_avg'] /= per_million_factor
 
-	fig, ax = plt.subplots()
+	df_IC_rate = df_prevalence.merge(df_IC, right_index = True, left_index = True)
+	df_IC_rate['IC_rate'] = df_IC_rate['Amount']/df_IC_rate['prev_avg']
+	#filter out nans
+	df_IC_rate = df_IC_rate.loc[df_IC_rate['IC_rate'].notna()]
 
-	ax.plot(df_IC.index, df_IC.New, label = 'New')
-	ax.plot(df_IC.index, df_IC.Removed, label = 'Removed')
+	fig, ax1 = plt.subplots()
 
-	ax.set_ylabel('Change')
-	ax.set_title('Change in IC occupation')
+	ax2 = ax1.twinx()
 
-	ax.legend(loc = 'best')
-	ax.grid(linestyle = ':')
+	lns1 = ax1.plot(df_IC.index, df_IC.Amount, label = 'Number of patients on IC')
+	lns2 = ax2.plot(df_IC_rate.index, df_IC_rate.IC_rate, label = 'Fraction of infectious patients on IC', color = 'orangered')
+
+	ax1.set_ylabel('Number of patients')
+	ax1.set_title('IC occupation')
+
+	lns = lns1 + lns2
+	labs = [l.get_label() for l in lns]
+	ax1.legend(lns, labs, loc='best')
+	ax1.grid(linestyle = ':')
 
 	fig.autofmt_xdate()
 
-	plt.savefig(f'{plotloc}Hospital_IC_change.png', dpi = 200, bbox_inches = 'tight')
+	plt.savefig(f'{plotloc}Hospital_IC_occupation.png', dpi = 200, bbox_inches = 'tight')
 	plt.close()
 
 def plot_superspreader_events():
@@ -1936,13 +1952,14 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 
 	#time step size in days
 	dt = 1
-	N_steps = 1000
+	N_days = 300
+	N_steps = int(N_days/dt)
 
 	### First set several rate parameters
 	a = 1/2.5 #person is about 2.5 days not contagious
 	gamma = 1/13.15
 	mu = 0.00862225 #based on Dutch data, very similar to data from China
-	Rt = 2
+	Rt = 1.5
 	beta = beta_from_Rt(Rt, gamma, mu)
 
 	param = {
@@ -1954,7 +1971,7 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 
 	### initialize our population at t = 0
 	N = 17407585 #total population of the Netherlands on 1-1-2020
-	I = df_prevalence.loc[startdate]['prev_avg']
+	I = df_prevalence.loc[startdate]['prev_avg'] * N/1e6
 	#estimate exposed people based on recovery rate gamma and exposure period 1/a
 	E = I*(param['gamma'] + param['mu']) / param['a']
 	D = 0 #start counting deaths from now on
@@ -1973,7 +1990,7 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 	df_pop = pd.DataFrame(columns = list(pop.keys()))
 
 	### naive integrator
-	for i in range(N_steps):
+	for i in tqdm(range(N_steps)):
 		#determine change
 		dS = dt * dSdt(param, pop)
 		dE = dt * dEdt(param, pop)
@@ -2749,13 +2766,13 @@ def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 5, reg
 
 def main():
 	# government_response_results_simple()
-	# plot_hospitalization()
+	plot_hospitalization()
 	# stringency_R_correlation(enddate = '2021-01-07')
 	# plot_superspreader_events()
 	# plot_R_versus_weather()
 	# plot_longterm_prevalence_decay(given_R = 0.9)
 
-	epidemiological_modelling()
+	# epidemiological_modelling()
 
 	# plot_daily_results(use_individual_data = True, startdate = '2020-09-01')
 	# plot_prevalence_R()
