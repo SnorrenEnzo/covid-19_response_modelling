@@ -12,6 +12,7 @@
 - Reproductive number: [link](https://data.rivm.nl/covid-19/COVID-19_reproductiegetal.json)
 - More raw data: [link](https://coronadashboard.rijksoverheid.nl/verantwoording)
 - Behaviour studies: [link](https://data.rivm.nl/geonetwork/srv/dut/catalog.search#/metadata/8a72d78a-fcf8-4882-b0ab-cd594961a267?tab=relations)
+- COVID-19 new cases, hospital admission and death rates per municipality: [link](https://data.rivm.nl/geonetwork/srv/dut/catalog.search#/metadata/5f6bc429-1596-490e-8618-1ed8fd768427?tab=relations)
 
 Weekly update [link](https://www.rivm.nl/coronavirus-covid-19/actueel) with:
 - Number of tests performed per week
@@ -32,6 +33,8 @@ Weather data: [KNMI](https://www.knmi.nl/nederland-nu/klimatologie/daggegevens)
 #### Other international data
 
 Superspreader event database: [article](https://kmswinkels.medium.com/covid-19-superspreading-events-database-4c0a7aa2342b), [Google docs database](https://docs.google.com/spreadsheets/d/1c9jwMyT1lw2P0d6SDTno6nHLGMtpheO9xJyGHgdBoco/edit#gid=1812932356)
+
+SARS-COV-2 strains: [link](https://nextstrain.org/ncov/global)
 
 #### Possible early predictors (for prevalence and R)
 
@@ -58,29 +61,21 @@ Timeline of coronavirus in the Netherlands, including each change in government 
 
 #### Detailed statistics
 Incubation period
-- 8.3 days, looks kind of exponential (or Poisson) [link](https://advances.sciencemag.org/content/6/33/eabc1202.full)
+- 8.3 days (median is 7.76 days), looks kind of exponential (or Poisson) [link](https://advances.sciencemag.org/content/6/33/eabc1202.full)
+- 5.1 days: [link](https://www.acpjournals.org/doi/full/10.7326/M20-0504)
+- 4-5 days: [link](https://www.sciencedirect.com/science/article/pii/S1473309920305533)
+- 5.08 days (46% asymptomatic infections): [link](https://onlinelibrary.wiley.com/doi/full/10.1002/jmv.26041)
+- 6.93 days in India [link](https://www.sciencedirect.com/science/article/pii/S2666449620300311)
 
-Case mortality rate: [link](https://en.wikipedia.org/wiki/COVID-19_pandemic_death_rates_by_country)
-- 4.6% for the Netherlands
+Case mortality rate (IFR):
+- 1.4% for the Netherlands: [link](https://en.wikipedia.org/wiki/COVID-19_pandemic_death_rates_by_country)
+- 0.68% average worldwide: [link](https://www.sciencedirect.com/science/article/pii/S1201971220321809)
 
 Days contagious after infection [link](https://www.theladders.com/career-advice/new-study-finds-covid-19-patients-remain-infectious-for-only-this-number-of-days)
 - Up to the 11 day
 
-##### Parameters of the SEIRD model:
-Exposure period 1/a (NOT YET INFECTIOUS, average, exponential distribution with parameter a):
-- Can't be really determined, let's set it to 2 days for now
-
-Average time of infection 1/beta (serial interval)
-- 4.7 days, based on 28 cases, looks like gamma distribution 4-2020 [link](https://www.sciencedirect.com/science/article/pii/S1201971220301193)
-- 3.96 days, based on 468 cases 26-6-2020 [link](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC7258488/)
-- ~4.1 days, based on 1407 cases 18-6-2020 [link](https://academic.oup.com/cid/advance-article/doi/10.1093/cid/ciaa790/5859582)
-
-Recovery time 1/gamma
-- Time between infection and recovery: 14 days [link](https://www.who.int/docs/default-source/coronaviruse/who-china-joint-mission-on-covid-19-final-report.pdf#:~:text=Using%20available%20preliminary%20data%2C,severe%20or%20critical%20disease.)
-
-Mortality rate 1/mu
-- Not mentioned a lot. Can however be calculated using 1/I dD/dt
-	- dD/dt source: [link](https://www.rivm.nl/coronavirus-covid-19/grafieken)
+IC rates information
+- 13.8% of infections are severe, 6.1% are critical [link](https://www.medrxiv.org/content/medrxiv/early/2020/04/21/2020.03.19.20039388.full.pdf)
 
 ### Data visualization
 [covid-analytics.nl](https://covid-analytics.nl/population.html): the general test positivity rate graphs etc, but also detailed and complete information on hospital bed/ICU usage and up to date capacity.
@@ -124,7 +119,59 @@ When looking at the correlation matrix we obtain the following Pearson correlati
 
 Fat-tailed superspreader events: [link](https://www.pnas.org/node/958545.full)
 
-### Modelling background information
+### Modelling
+
+We will use a SEISD model:
+S -> E -> I -> S/D
+
+Where:
+- S: susceptable
+- E: exposed
+- I: infectuous
+- D: dead
+
+and total population N = S + E + I
+
+No "recovered" state R is present, because immunity does not last long.
+
+Here:
+- beta: infection rate (1/beta: time between infections) S -> E
+- a: incubation rate (1/a: incubation period) E -> I
+- gamma: recovery rate (1/gamma: average recovery time) I -> S
+- mu: death rate (mu = IFR/T_death) I -> D
+
+The basic reproduction number is then defined as:
+R0 = beta/(gamma + mu)
+
+The SEIR model uses a more complicated one to account for population growth and normal mortality. However, these can be neglected and thus the R0 reduces to the equation above.
+
+Note that gamma and mu remain largely unchanged. Beta changes because of changes in contact between persons, partially due to the government response. This is reflected in a change of R.
+
+Differential equations defining the model:
+
+#### Parameters values of the SEIRSD model
+
+Exposure period 1/a (NOT YET INFECTIOUS, average, exponential distribution with parameter a):
+- Can't be really determined, let's set it to 2 days for now
+
+Average time of infection 1/beta (serial/generation interval). Generally a day shorter than the incubation time.
+- 4.7 days, based on 28 cases, looks like gamma distribution 4-2020 [link](https://www.sciencedirect.com/science/article/pii/S1201971220301193)
+- 3.96 days, based on 468 cases 26-6-2020 [link](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC7258488/)
+- ~4.1 days, based on 1407 cases 18-6-2020 [link](https://academic.oup.com/cid/advance-article/doi/10.1093/cid/ciaa790/5859582)
+- 3.91 days Italy, 1.81 days China based on SIRD modelling, see saved figure in literature: [link](https://www.medrxiv.org/content/medrxiv/early/2020/04/21/2020.03.19.20039388.full.pdf)
+
+Recovery time 1/gamma
+- Time between infection and recovery: 14 days [link](https://www.who.int/docs/default-source/coronaviruse/who-china-joint-mission-on-covid-19-final-report.pdf#:~:text=Using%20available%20preliminary%20data%2C,severe%20or%20critical%20disease.)
+- 13.15 days in China, see saved figure in literature (gamma_0 + gamma_1): [link](https://www.medrxiv.org/content/medrxiv/early/2020/04/21/2020.03.19.20039388.full.pdf)
+
+Mortality rate 1/mu
+- Not mentioned a lot. Can however be calculated using 1/I dD/dt
+	- dD/dt source: [link](https://www.rivm.nl/coronavirus-covid-19/grafieken)
+- See also [here](https://www.imperial.ac.uk/news/207273/covid-19-deaths-infection-fatality-ratio-about/) though this is a bit old.
+- Other source that was sent to me, see also the other figure: [link](https://gh.bmj.com/content/bmjgh/5/9/e003094.full.pdf). IFR ~ 0.9% in the Netherlands.
+- ~100 days in China after a while [link](https://www.medrxiv.org/content/medrxiv/early/2020/04/21/2020.03.19.20039388.full.pdf)
+
+#### Background information
 
 Disease model, combination between these two:
 - [SIRD](https://en.wikipedia.org/wiki/Compartmental_models_in_epidemiology#The_SIRD_model)
@@ -132,6 +179,7 @@ Disease model, combination between these two:
 
 Integrator: [RK4](https://en.wikipedia.org/wiki/Runge%E2%80%93Kutta_methods)
 Basic reproduction number: [link](https://en.wikipedia.org/wiki/Basic_reproduction_number)
+
 
 Other ways of modelling:
 - [link](https://www.nas.ewi.tudelft.nl/index.php/coronavirus)

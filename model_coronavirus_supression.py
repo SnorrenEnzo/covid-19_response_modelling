@@ -34,13 +34,14 @@ plotloc = './Plots/'
 plotloc_government_response = './Gov_response_plots/'
 R_plotloc = f'{plotloc}R_prediction/'
 Prev_plotloc = f'{plotloc}Prevalence_prediction/'
+epidem_modelling_plotloc = f'{plotloc}Epidemiological_modelling/'
 
 #source: https://www.cbs.nl/nl-nl/visualisaties/bevolkingsteller
 n_inhabitants_NL = 17455552
 per_million_factor = 1e6/n_inhabitants_NL
 
 #number of days after which an infected person becomes infectuous themselves
-serial_interval = 5
+serial_interval = 5.
 
 #number of days between infection and recovery
 time_till_recovery = 14
@@ -73,41 +74,8 @@ def downloadSave(url, file_name, check_file_exists = False):
 def average_kernel(size = 7):
 	return np.ones(size)/size
 
-def get_mean_mu(df_prevalence, df_deaths):
-	#slice the dD/dt between dates
-	mask = (df_deaths.index > '2020-02-27') & (df_deaths.index <= '2020-08-10')
-	df_deaths = df_deaths.loc[mask]
-
-	#do the same for the prevalence I
-	mask = (df_prevalence.index > '2020-02-27') & (df_prevalence.index <= '2020-08-10')
-	df_prevalence = df_prevalence.loc[mask]
-
-	df_mu = df_deaths[['Amount']].merge(df_prevalence[['prev_avg']], right_index = True, left_index = True)
-
-	#now calculate the mortality rate per unit time
-	df_mu['mu'] = df_mu['Amount']/df_mu['prev_avg'] #day^-1
-
-	fig, ax = plt.subplots()
-
-	ax.plot(df_mu.index, df_mu['mu'])
-
-	ax.set_ylabel(r'Mortality rate per unit time ($\mu$) [day$^-1$]')
-	ax.set_title('Change in COVID-19 mortality rate per unit time ')
-
-	ax.grid(linestyle = ':')
-
-	plt.savefig('mu_change_NL.png', dpi = 200, bbox_inches = 'tight')
-	plt.close()
-
-	#determine average between april and june
-	mask = (df_mu.index > '2020-04-01') & (df_mu.index <= '2020-06-01')
-	mu_mean = np.mean(df_mu.loc[mask]["mu"])
-	print(f'Mean mu: {mu_mean}')
-
-	return mu_mean
-
-def exponential_model(nE_0, R0, t, tau):
-	return nE_0 * R0**(t/tau)
+def exponential_model(nE_0, Rt, t, tau):
+	return nE_0 * Rt**(t/tau)
 
 def linear_model(x, a, b):
 	return a*x + b
@@ -157,18 +125,27 @@ def shade_region(ax, dates, colour = 'black', alpha = 0.2, label = None):
 	xlims = ax.get_xlim()
 	ylims = ax.get_ylim()
 
-	ax.fill([dates[0], dates[1], dates[1], dates[0]],
+	ln = ax.fill([dates[0], dates[1], dates[1], dates[0]],
 			[ylims[0], ylims[0], ylims[1], ylims[1]],
 			alpha = alpha, edgecolor = 'none', facecolor = colour, label = label)
 
 	ax.set_xlim(xlims)
 	ax.set_ylim(ylims)
 
+	return ln
+
 def indicate_school_closed(ax):
 	autumn_break_dates = get_period_dates('autumn break')
 	shade_region(ax, autumn_break_dates, label = 'School closure/vacations')
 	school_closure_dates = get_period_dates('school closure')
 	shade_region(ax, school_closure_dates)
+
+def indicate_incomplete_test_data(ax, df):
+	"""
+	Indicate the latest few days where test data for the individual dataset
+	is as of yet incomplete
+	"""
+	return shade_region(ax, np.array([df.index[-1] - pd.Timedelta(f'{5} day'), df.index[-1]], dtype = np.datetime64), colour = 'red', alpha = 0.2, label = 'Data incomplete')
 
 def extrapolate_dataframe(df, colname, date_to_extrap, base_period = 7):
 	"""
@@ -341,32 +318,32 @@ def whitening_transform(X, return_W_matrix = False):
 		return Xwhitened
 
 
-def load_prevalence_R0_data():
+def load_prevalence_Rt_data():
 	"""
 	Load data and return as estimated number of infectious people per million
 	"""
 	url_prevalence = 'https://data.rivm.nl/covid-19/COVID-19_prevalentie.json'
-	url_R0 = 'https://data.rivm.nl/covid-19/COVID-19_reproductiegetal.json'
+	url_Rt = 'https://data.rivm.nl/covid-19/COVID-19_reproductiegetal.json'
 
 	fname_prevalence = f'{dataloc}prevalence.json'
-	fname_R0 = f'{dataloc}R0.json'
+	fname_Rt = f'{dataloc}Rt.json'
 
 	downloadSave(url_prevalence, fname_prevalence, check_file_exists = True)
-	downloadSave(url_R0, fname_R0, check_file_exists = True)
+	downloadSave(url_Rt, fname_Rt, check_file_exists = True)
 
 	df_prevalence = pd.read_json(fname_prevalence)[['Date', 'prev_avg', 'prev_low',
 	'prev_up']]
-	df_R0 = pd.read_json(fname_R0)[['Date', 'Rt_avg', 'Rt_low', 'Rt_up']]
+	df_Rt = pd.read_json(fname_Rt)[['Date', 'Rt_avg', 'Rt_low', 'Rt_up']]
 
 	df_prevalence.set_index('Date', inplace = True)
-	df_R0.set_index('Date', inplace = True)
+	df_Rt.set_index('Date', inplace = True)
 
 	#change prevalence to per million
 	df_prevalence['prev_avg'] *= per_million_factor
 	df_prevalence['prev_low'] *= per_million_factor
 	df_prevalence['prev_up'] *= per_million_factor
 
-	return df_prevalence, df_R0
+	return df_prevalence, df_Rt
 
 def load_deathdata():
 	df_deaths = pd.read_csv(f'{dataloc}deaths_per_day.csv', sep = ';')
@@ -398,12 +375,16 @@ def load_deathdata():
 
 	return df_deaths
 
-def load_government_response_data():
+def load_government_response_data(country = 'NLD'):
+	"""
+	More info on the various flags:
+	https://github.com/OxCGRT/covid-policy-tracker/blob/master/documentation/codebook.md
+	"""
 	url = 'https://raw.githubusercontent.com/OxCGRT/covid-policy-tracker/master/data/OxCGRT_latest.csv'
 	raw_fname = f'{dataloc}OxCGRT_latest.csv'
 
 	#filename of the csv data containing only the desired dutch data
-	nl_fname = f'{dataloc}OxCGRT_NL.csv'
+	nl_fname = f'{dataloc}OxCGRT_{country}.csv'
 
 	#read the data from the Netherlands only, this allows you to easily add extra
 	#data which the Oxfort team has not yet added themselves (recent response etc)
@@ -419,7 +400,7 @@ def load_government_response_data():
 		df_response = pd.read_csv(raw_fname)
 
 		#filter on the netherlands
-		df_response = df_response.loc[df_response['CountryCode'] == 'NLD']
+		df_response = df_response.loc[df_response['CountryCode'] == country]
 
 		#get the individual index column names
 		desired_indices = np.array([f'C{x}' for x in range(1, 9)] + ['E1', 'E2'])
@@ -451,7 +432,7 @@ def load_government_response_data():
 
 	return df_response
 
-def load_mobility_data(smooth = False, smoothsize = 7, apple_mobility_url_base = 'https://covid19-static.cdn-apple.com/covid19-mobility-data/2024HotfixDev7/v3/en-us/applemobilitytrends-'):
+def load_mobility_data(smooth = False, smoothsize = 7, apple_mobility_url_base = 'https://covid19-static.cdn-apple.com/covid19-mobility-data/2025HotfixDev21/v3/en-us/applemobilitytrends-'):
 	"""
 	Load Apple and Google mobility data. Downloadable from:
 
@@ -590,7 +571,7 @@ def load_mobility_data(smooth = False, smoothsize = 7, apple_mobility_url_base =
 
 def load_daily_covid(correct_for_delay = False):
 	url_daily_covid = 'https://data.rivm.nl/covid-19/COVID-19_aantallen_gemeente_per_dag.csv'
-	fname_daily_covid = f'{dataloc}positieve_tests.csv'
+	fname_daily_covid = f'{dataloc}covid19_postests_hosp_death.csv'
 
 	downloadSave(url_daily_covid, fname_daily_covid, check_file_exists = True)
 
@@ -1108,18 +1089,18 @@ def load_behaviour_data(startdate, enddate):
 
 
 def plot_prevalence_R():
-	df_prevalence, df_R0 = load_prevalence_R0_data()
+	df_prevalence, df_Rt = load_prevalence_Rt_data()
 	df_response = load_government_response_data()
 
 	#filter on starting date
 	startdate = '2020-02-15'
 	df_prevalence = df_prevalence.loc[df_prevalence.index > startdate]
-	df_R0 = df_R0.loc[df_R0.index > startdate]
+	df_Rt = df_Rt.loc[df_Rt.index > startdate]
 	df_response = df_response.loc[df_response.index > startdate]
 
 	print('----\nLatest data')
 	print(f'Prevalence: {df_prevalence.loc[df_prevalence["prev_avg"].notnull()].index[-1]}')
-	print(f'R: {df_R0.loc[df_R0["Rt_avg"].notnull()].index[-1]}')
+	print(f'R: {df_Rt.loc[df_Rt["Rt_avg"].notnull()].index[-1]}')
 	print('----')
 
 	fig, ax1 = plt.subplots()
@@ -1132,8 +1113,8 @@ def plot_prevalence_R():
 	ax1.fill_between(df_prevalence.index, df_prevalence['prev_low'], df_prevalence['prev_up'], alpha = 0.4)
 
 	#plot R
-	ln2 = ax2.plot(df_R0.index, df_R0['Rt_avg'], color = 'maroon', label = r'$R$')
-	ax2.fill_between(df_R0.index, df_R0['Rt_low'], df_R0['Rt_up'], alpha = 0.4, color = 'maroon')
+	ln2 = ax2.plot(df_Rt.index, df_Rt['Rt_avg'], color = 'maroon', label = r'$R$')
+	ax2.fill_between(df_Rt.index, df_Rt['Rt_low'], df_Rt['Rt_up'], alpha = 0.4, color = 'maroon')
 
 	#also plot government response
 	ln3 = ax3.plot(df_response.index, df_response['StringencyIndex'], label = 'Stringency index', color = betterblack)
@@ -1323,9 +1304,12 @@ def plot_daily_results(use_individual_data = True, startdate = '2020-07-01'):
 
 	ax1.grid(linestyle = ':')
 
+	if use_individual_data:
+		lns5 += indicate_incomplete_test_data(ax1, df_daily_covid)
+
 	lns = lns1 + lns2 + lns3 + lns4 + lns5
 	labs = [l.get_label() for l in lns]
-	ax1.legend(lns, labs, loc = 'lower left', prop = {'size': 8}) #loc = 'center', bbox_to_anchor = (0.5, -0.4), ncol = 2,
+	ax1.legend(lns, labs, loc = 'lower left', prop = {'size': 6}) #loc = 'center', bbox_to_anchor = (0.5, -0.4), ncol = 2,
 	# fig.subplots_adjust(bottom = 0.2, right = 0.8)
 
 	if use_individual_data:
@@ -1536,7 +1520,7 @@ def plot_individual_data(use_agegroups = True):
 			indicate_school_closed(ax)
 
 			#indicate period where not yet everyone who will be tested, has been
-			shade_region(ax, np.array([df_individual.index[-1] - pd.Timedelta(f'{5} day'), df_individual.index[-1]], dtype = np.datetime64), colour = 'red', alpha = 0.2, label = None)
+			indicate_incomplete_test_data(ax, df_individual)
 
 			#fix the date labels
 			ax.set_xticks(pd.date_range(np.min(df_individual.index), np.max(df_individual.index), freq = '14D', format = '%d-%m-%Y').to_series())
@@ -1617,7 +1601,7 @@ def plot_cluster_change():
 	plt.close()
 
 def plot_R_versus_weather(startdate = '2020-06-15'):
-	df_prevalence, df_R = load_prevalence_R0_data()
+	df_prevalence, df_R = load_prevalence_Rt_data()
 	df_weather = load_weather_data(smooth = False, abs_hum = True)
 
 	#merge datasets
@@ -1662,19 +1646,19 @@ def plot_longterm_prevalence_decay(given_R = 0.9, enddate = '2021-05-01'):
 	"""
 	Plot the decay of the prevalence at a given R regime in the future
 	"""
-	df_prevalence, df_R0 = load_prevalence_R0_data()
+	df_prevalence, df_Rt = load_prevalence_Rt_data()
 	# df_response = load_government_response_data()
 
 	#filter on starting date
 	startdate = '2020-03-01'
 	df_prevalence = df_prevalence.loc[df_prevalence.index > startdate]
-	df_R0 = df_R0.loc[df_R0.index > startdate]
+	df_Rt = df_Rt.loc[df_Rt.index > startdate]
 	# df_response = df_response.loc[df_response.index > startdate]
 
 	#find last date with known prevalence
 	last_prev_date = df_prevalence.loc[df_prevalence['prev_avg'].notna()].index[-1]
 	#find last date with known R
-	last_R_date = df_R0.loc[df_R0['Rt_avg'].notna()].index[-1]
+	last_R_date = df_Rt.loc[df_Rt['Rt_avg'].notna()].index[-1]
 
 	enddate = pd.to_datetime(enddate, format = '%Y-%m-%d')
 
@@ -1683,11 +1667,11 @@ def plot_longterm_prevalence_decay(given_R = 0.9, enddate = '2021-05-01'):
 	#create rows to desired date
 	while df_prevalence.index[-1] < enddate:
 		df_prevalence.loc[df_prevalence.index[-1] + pd.Timedelta(f'{timestep_size} day')] = [np.nan]*3
-	while df_R0.index[-1] < enddate:
-		df_R0.loc[df_R0.index[-1] + pd.Timedelta(f'{timestep_size} day')] = [np.nan]*3
+	while df_Rt.index[-1] < enddate:
+		df_Rt.loc[df_Rt.index[-1] + pd.Timedelta(f'{timestep_size} day')] = [np.nan]*3
 
 	#fill last rows of R dataframe with given R
-	df_R0 = df_R0.set_value(df_R0.index[df_R0.index > last_R_date], 'Rt_avg', given_R)
+	df_Rt = df_Rt.set_value(df_Rt.index[df_Rt.index > last_R_date], 'Rt_avg', given_R)
 
 	#determine which rows need filling
 	fillmask = df_prevalence.index > last_prev_date
@@ -1710,12 +1694,12 @@ def plot_longterm_prevalence_decay(given_R = 0.9, enddate = '2021-05-01'):
 	ln2 = ax1.plot(df_prevalence.loc[fillmask].index, df_prevalence.loc[fillmask]['prev_avg'], label = 'Prevalence (predicted)', linestyle = '--', color = mplblue)
 
 	#plot known R
-	known_R_mask = df_R0.index <= last_R_date
-	ln3 = ax2.plot(df_R0.loc[known_R_mask].index, df_R0.loc[known_R_mask]['Rt_avg'], color = 'maroon', label = r'$R$ (known)')
-	ax2.fill_between(df_R0.loc[known_R_mask].index, df_R0.loc[known_R_mask]['Rt_low'], df_R0.loc[known_R_mask]['Rt_up'], alpha = 0.4, color = 'maroon')
+	known_R_mask = df_Rt.index <= last_R_date
+	ln3 = ax2.plot(df_Rt.loc[known_R_mask].index, df_Rt.loc[known_R_mask]['Rt_avg'], color = 'maroon', label = r'$R$ (known)')
+	ax2.fill_between(df_Rt.loc[known_R_mask].index, df_Rt.loc[known_R_mask]['Rt_low'], df_Rt.loc[known_R_mask]['Rt_up'], alpha = 0.4, color = 'maroon')
 
 	#plot given R
-	ln4 = ax2.plot(df_R0.loc[df_R0.index > last_R_date].index, df_R0.loc[df_R0.index > last_R_date]['Rt_avg'], color = 'maroon', label = r'$R$ (set)', linestyle = '--')
+	ln4 = ax2.plot(df_Rt.loc[df_Rt.index > last_R_date].index, df_Rt.loc[df_Rt.index > last_R_date]['Rt_avg'], color = 'maroon', label = r'$R$ (set)', linestyle = '--')
 
 	ax1.set_ylim(0)
 	ax2.set_ylim(0, 2.6)
@@ -1747,7 +1731,7 @@ def government_response_results_simple():
 
 	def response_model_1(prevalence, prevalence_threshold, R_from_now, t_from_now, response_delay = 14, upward_R = 1.3, downward_R = 0.8):
 		"""
-		Model that ensures that a R0 below 1 is enforced when the prevalence rises
+		Model that ensures that a Rt below 1 is enforced when the prevalence rises
 		above a threshold, though with a certain delay due to the incubation period
 		etc
 		"""
@@ -1775,7 +1759,7 @@ def government_response_results_simple():
 		return R_from_now
 
 
-	df_prevalence, df_R0 = load_prevalence_R0_data()
+	df_prevalence, df_Rt = load_prevalence_Rt_data()
 
 	response_delay = 14
 
@@ -1790,7 +1774,7 @@ def government_response_results_simple():
 	timestep_size = 1
 	t_range = np.arange(0, 280, timestep_size)
 
-	#store prevalence and R0
+	#store prevalence and Rt
 	prev_array = np.zeros(len(t_range) + 1)
 	response_R_array = np.zeros(len(t_range) + 1) + upward_R
 
@@ -1856,8 +1840,69 @@ def government_response_results_simple():
 	plt.savefig(f'{plotloc_government_response}Government_response_outcome_simple_1_{upward_R}_{downward_R}.png', dpi = 200, bbox_inches = 'tight')
 	plt.close()
 
-def government_response_results_SEIRD():
-	df_prevalence, df_R0 = load_prevalence_R0_data()
+def epidemiological_modelling():
+	"""
+	Model the evolution of the coronavirus pandemic using a SEISD model. More info:
+	https://en.wikipedia.org/wiki/Compartmental_models_in_epidemiology#The_SEIR_model
+
+	Also look in the readme.
+	"""
+	def get_mean_mu(df_prevalence, df_daily_covid, enddate = '2021-01-20'):
+		startdate_plot = '2020-02-27'
+		startdate_determining_avg = '2020-10-01'
+
+		#slice the dD/dt between dates
+		mask = (df_daily_covid.index > startdate_plot) & (df_daily_covid.index <= enddate)
+		df_deaths = df_daily_covid.copy().loc[mask]
+
+		#do the same for the prevalence I
+		mask = (df_prevalence.index > startdate_plot) & (df_prevalence.index <= enddate)
+		df_prevalence = df_prevalence.loc[mask]
+
+		df_mu = df_daily_covid[['Deceased']].merge(df_prevalence[['prev_avg']], right_index = True, left_index = True)
+
+		#now calculate the mortality rate per unit time
+		df_mu['mu'] = df_mu['Deceased']/df_mu['prev_avg'] #day^-1
+
+		fig, ax = plt.subplots()
+
+		ax.plot(df_mu.index, df_mu['mu'])
+
+		ax.set_ylabel(r'Mortality rate per unit time ($\mu$) [day$^-1$]')
+		ax.set_title('Change in COVID-19 mortality rate per unit time ')
+
+		ax.grid(linestyle = ':')
+
+		fig.autofmt_xdate()
+
+		plt.savefig(f'{epidem_modelling_plotloc}mu_change_NL.png', dpi = 200, bbox_inches = 'tight')
+		plt.close()
+
+		#determine average between april and june
+		mask = (df_mu.index > startdate_determining_avg) & (df_mu.index <= enddate)
+		mu_mean = np.mean(df_mu.loc[mask]["mu"])
+		print(f'Mean mu: {mu_mean}')
+
+		#between 2020-10-01 and 2021-01-20 mu is on average 0.00862225
+		#-> 1/mu ~ 116 days, which is a bit higher than China at their end of the pandemic.
+
+		return mu_mean
+
+	df_prevalence, df_Rt = load_prevalence_Rt_data()
+	df_daily_covid = load_daily_covid(correct_for_delay = False)
+
+	print(df_daily_covid)
+
+	get_mean_mu(df_prevalence, df_daily_covid)
+
+
+	### First set several rate parameters
+
+
+	mu = 0.00862225 #based on Dutch data, very similar to data from China
+
+
+	'''
 
 	peak_prev = 200000
 
@@ -1884,13 +1929,14 @@ def government_response_results_SEIRD():
 
 	plt.savefig(f'{plotloc_government_response}Government_response_outcome_complex.png', dpi = 200, bbox_inches = 'tight')
 	plt.close()
+	'''
 
 def stringency_R_correlation(enddate = '2020-11-26'):
 	df_response = load_government_response_data()
-	df_prevalence, df_R0 = load_prevalence_R0_data()
+	df_prevalence, df_Rt = load_prevalence_Rt_data()
 
 	#merge datasets
-	df_reponse_results = df_response.merge(df_R0[['Rt_avg']], right_index = True, left_index = True)
+	df_reponse_results = df_response.merge(df_Rt[['Rt_avg']], right_index = True, left_index = True)
 
 	#select date range
 	mask = (df_reponse_results.index > '2020-02-16') & (df_reponse_results.index <= enddate)
@@ -1921,13 +1967,13 @@ def stringency_R_correlation(enddate = '2020-11-26'):
 	ax.plot(xpoints, linear_model(xpoints, *popt), label = r'Fit ($R^2 = $' + f'{r_squared:0.03f})', color = 'black')
 
 	### now plot the effects of a variant which is more infectious
-	mean_R_increase = 0.55
+	mean_R_increase = 1.43
 	errorbar = 0.15
 
 	xpoints = np.linspace(np.min(df_reponse_results.loc[high_stringency_mask]['StringencyIndex']), 100, num = 500)
-	R_prediction_new_variant = linear_model(xpoints, *popt) + mean_R_increase
+	R_prediction_new_variant = linear_model(xpoints, *popt) * mean_R_increase
 
-	ax.plot(xpoints, R_prediction_new_variant, label = f'SARS-COV-2 20B/501Y.V1 model\nwith mean R {mean_R_increase} higher', color = betterorange)
+	ax.plot(xpoints, R_prediction_new_variant, label = f'SARS-COV-2 20B/501Y.V1 model\nwith R {mean_R_increase} times higher', color = betterorange)
 	ax.fill_between(xpoints, R_prediction_new_variant - errorbar, R_prediction_new_variant + errorbar, color = betterorange, alpha = 0.4)
 
 
@@ -1952,7 +1998,7 @@ def estimate_recent_R(enddate_train = '2020-10-25', regression_method = 'ridge')
 	startdate_train = '2020-06-15'
 	startdate_pred = '2020-07-01'
 
-	df_prevalence, df_R = load_prevalence_R0_data()
+	df_prevalence, df_R = load_prevalence_Rt_data()
 	df_google_mob, df_apple_mob = load_mobility_data(smooth = True)
 	df_weather = load_weather_data(smooth = True, abs_hum = True)
 	#for the plot as a reference as well as data input
@@ -2048,7 +2094,7 @@ def estimate_recent_R(enddate_train = '2020-10-25', regression_method = 'ridge')
 		plt.close()
 
 	### determine correlation matrix for all these parameters
-	if False:
+	if True:
 		compare_parameters = [
 			'Rt_avg',
 			'retail_recreation_smooth',
@@ -2319,7 +2365,7 @@ def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 5, reg
 
 	startdate_train = '2020-09-08'
 
-	df_prevalence, df_R0 = load_prevalence_R0_data()
+	df_prevalence, df_Rt = load_prevalence_Rt_data()
 	df_overall_positive_tests = load_daily_covid(correct_for_delay = False)
 	df_individual = load_individual_positive_test_data(load_agegroups = True)
 	df_n_tests = load_number_of_tests(enddate = np.datetime64('today'))
@@ -2433,7 +2479,7 @@ def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 5, reg
 	weight = 1/np.array(df_prevalence_cor['prev_abs_error'])
 
 	### plot correlation matrix
-	if False:
+	if True:
 		corr_matrix = np.corrcoef(np.concatenate((Y[:,None], X), axis = 1).T)
 
 		compare_parameters_names = ['Prevalence'] + [param.replace('_smooth', '') for param in parameters_used]
@@ -2640,20 +2686,26 @@ def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 5, reg
 def main():
 	# government_response_results_simple()
 	# plot_hospitalization()
-	# stringency_R_correlation(enddate = '2020-12-24')
+	# stringency_R_correlation(enddate = '2021-01-07')
 	# plot_superspreader_events()
 	# plot_R_versus_weather()
-	# plot_longterm_prevalence_decay(given_R = 0.7)
+	# plot_longterm_prevalence_decay(given_R = 0.9)
+
+	epidemiological_modelling()
 
 	# plot_daily_results(use_individual_data = True, startdate = '2020-09-01')
 	# plot_prevalence_R()
 	# plot_mobility()
 	# plot_sewage()
-	plot_individual_data()
+	# plot_individual_data()
 	# plot_cluster_change()
 
-	# estimate_recent_R(enddate_train = '2020-12-24', regression_method = 'Ridge')
-	# estimate_recent_prevalence(enddate_train = '2020-12-30', regression_method = 'AdaBoost')
+	# df = load_government_response_data(country = 'BEL')
+	# pd.set_option('display.max_rows', None)
+	# print(df['C6'])
+
+	# estimate_recent_R(enddate_train = '2021-01-08', regression_method = 'Ridge')
+	# estimate_recent_prevalence(enddate_train = '2021-01-13', regression_method = 'AdaBoost')
 
 if __name__ == '__main__':
 	main()
