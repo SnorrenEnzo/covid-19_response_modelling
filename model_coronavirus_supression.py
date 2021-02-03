@@ -317,7 +317,6 @@ def whitening_transform(X, return_W_matrix = False):
 	else:
 		return Xwhitened
 
-
 def load_prevalence_Rt_data():
 	"""
 	Load data and return as estimated number of infectious people per million
@@ -966,9 +965,9 @@ def load_weather_data(smooth = False, abs_hum = False):
 		#also remove zip file
 		# os.remove(google_mobility_fname_zip)
 
-	df_weather = pd.read_csv(fname_weather, skiprows = 47, usecols = ['YYYYMMDD', '   TG', '    Q', '   UG', '   PG'])
+	df_weather = pd.read_csv(fname_weather, skiprows = 47, usecols = ['YYYYMMDD', '   TG', '	Q', '   UG', '   PG'])
 
-	df_weather = df_weather.rename(columns = {'YYYYMMDD': 'Date', '   TG': 'TAvg', '    Q': 'Rad', '   UG': 'HumAvg', '   PG': 'P'})
+	df_weather = df_weather.rename(columns = {'YYYYMMDD': 'Date', '   TG': 'TAvg', '	Q': 'Rad', '   UG': 'HumAvg', '   PG': 'P'})
 
 	df_weather['Date'] = pd.to_datetime(df_weather['Date'], format = '%Y%m%d')
 	df_weather.set_index('Date', inplace = True)
@@ -1840,7 +1839,7 @@ def government_response_results_simple():
 	plt.savefig(f'{plotloc_government_response}Government_response_outcome_simple_1_{upward_R}_{downward_R}.png', dpi = 200, bbox_inches = 'tight')
 	plt.close()
 
-def epidemiological_modelling():
+def epidemiological_modelling(startdate = '2021-01-20'):
 	"""
 	Model the evolution of the coronavirus pandemic using a SEISD model. More info:
 	https://en.wikipedia.org/wiki/Compartmental_models_in_epidemiology#The_SEIR_model
@@ -1888,48 +1887,113 @@ def epidemiological_modelling():
 
 		return mu_mean
 
+	def beta_from_Rt(Rt, gamma, mu):
+		return Rt * (gamma + mu)
+
+	### differential equations of the model
+	def dRdt(param, pop):
+		return param['gamma'] * pop['I']
+
+	def dSdt(param, pop):
+		return -param['beta'] * pop['S'] * pop['I']/pop['N'] + dRdt(param, pop)
+
+	def dEdt(param, pop):
+		return param['beta'] * pop['S'] * pop['I']/pop['N'] - param['a']*pop['E']
+
+	def dIdt(param, pop):
+		return param['a'] * pop['E'] - (param['gamma'] + param['mu']) * pop['I']
+
+	def dDdt(param, pop):
+		return param['mu'] * pop['I']
+
+	def plot_epidemiological_model(df_pop):
+		df_pop.set_index('Days', inplace = True)
+
+
+		fig, ax = plt.subplots()
+
+		params_to_plot = ['S', 'E', 'I', 'D']
+
+		for p in params_to_plot:
+			ax.plot(df_pop.index, df_pop[p]/1e6, label = p)
+
+		ax.grid(linestyle = ':')
+
+		ax.set_xlabel('Days since start')
+		ax.set_ylabel('Number of people [M]')
+
+		ax.legend(loc = 'best')
+
+		plt.savefig(f'{epidem_modelling_plotloc}Model_result_population.png', dpi = 200, bbox_inches = 'tight')
+		plt.close()
+
+
+
 	df_prevalence, df_Rt = load_prevalence_Rt_data()
 	df_daily_covid = load_daily_covid(correct_for_delay = False)
 
-	print(df_daily_covid)
+	# get_mean_mu(df_prevalence, df_daily_covid)
 
-	get_mean_mu(df_prevalence, df_daily_covid)
-
+	#time step size in days
+	dt = 1
+	N_steps = 1000
 
 	### First set several rate parameters
-
-
+	a = 1/2.5 #person is about 2.5 days not contagious
+	gamma = 1/13.15
 	mu = 0.00862225 #based on Dutch data, very similar to data from China
+	Rt = 2
+	beta = beta_from_Rt(Rt, gamma, mu)
+
+	param = {
+	'beta': beta,
+	'a': a,
+	'gamma': gamma,
+	'mu': mu
+	}
+
+	### initialize our population at t = 0
+	N = 17407585 #total population of the Netherlands on 1-1-2020
+	I = df_prevalence.loc[startdate]['prev_avg']
+	#estimate exposed people based on recovery rate gamma and exposure period 1/a
+	E = I*(param['gamma'] + param['mu']) / param['a']
+	D = 0 #start counting deaths from now on
+	S = N - I - E - D
+
+	pop = {
+	'Days': 0,
+	'N': N,
+	'S': S,
+	'E': E,
+	'I': I,
+	'D': D
+	}
+
+	#dataframe which will keep track of changes in population
+	df_pop = pd.DataFrame(columns = list(pop.keys()))
+
+	### naive integrator
+	for i in range(N_steps):
+		#determine change
+		dS = dt * dSdt(param, pop)
+		dE = dt * dEdt(param, pop)
+		dI = dt * dIdt(param, pop)
+		dD = dt * dDdt(param, pop)
+
+		#apply change
+		pop['Days'] += dt
+		pop['S'] += dS
+		pop['E'] += dE
+		pop['I'] += dI
+		pop['D'] += dD
+
+		df_pop = df_pop.append(pop, ignore_index = True)
+
+	plot_epidemiological_model(df_pop)
 
 
-	'''
-
-	peak_prev = 200000
-
-	response_R = 0.9
-
-	#number of infections per unit time per person
-	infection_rate = 1.5
-	# non_contagious_rate = 1/
-
-	#time range in days
-	t_range = np.arange(0, 150, 1)
-
-	#number of exposed persons
-	nE = exponential_model(peak_prev, response_R, t_range, serial_interval)
 
 
-
-	fig, ax = plt.subplots()
-
-
-	ax.plot(t_range, nE, label = 'Number of contagious persons')
-
-	ax.grid(linestyle = ':')
-
-	plt.savefig(f'{plotloc_government_response}Government_response_outcome_complex.png', dpi = 200, bbox_inches = 'tight')
-	plt.close()
-	'''
 
 def stringency_R_correlation(enddate = '2020-11-26'):
 	df_response = load_government_response_data()
