@@ -1997,8 +1997,31 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 		#IC overcapacity term: max(0, pop['IC'] - param['Mic'])
 		return param['mu'] * (pop['I'] + pop['IC'])# + max(0, pop['IC'] - param['Mic'])
 
+	def column_to_2D_array(series):
+		"""
+		Convert a pandas dataframe column with each entry a constant length
+		numpy array to a 2D numpy array
+		"""
+		columnlength = len(series)
+		array_in_row_length = len(series.iloc[0])
+
+		X = np.zeros((columnlength, array_in_row_length))
+
+		for i, row in enumerate(series.values):
+			X[i] = row
+
+		return X
+
 	def plot_epidemiological_model(df_pop, IC_frac_of_I, IC_limit):
+		params_to_plot = ['S', 'E', 'I', 'R']
+
+		all_columns = params_to_plot + ['IC', 'D']
+
 		df_pop.set_index('Days', inplace = True)
+
+		pop_result_dict = {}
+		for col in all_columns:
+			pop_result_dict[col] = column_to_2D_array(df_pop[col])
 
 
 		fig, ax1 = plt.subplots()
@@ -2008,16 +2031,15 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 
 		ax3.spines['right'].set_position(('axes', 1.12))
 
-		params_to_plot = ['S', 'E', 'I', 'R']
 		colours = ['#1f77b4', '#ff7f0e', '#2ca02c', '#9467bd', '#d62728']
 
 		#we can estimate the number of people on the IC based on the fraction
 		#of infectious people that end up on the IC, see plot_hospitalization
-		lns = ax2.plot(df_pop.index, df_pop['IC']/1e3, label = 'IC', color = 'black')
-		lns += ax3.plot(df_pop.index, df_pop['D']/1e3, label = 'D', color = '#d62728')
+		lns = ax2.plot(df_pop.index, np.sum(pop_result_dict['IC'], axis = 1)/1e3, label = 'IC', color = 'black')
+		lns += ax3.plot(df_pop.index, np.sum(pop_result_dict['D'], axis = 1)/1e3, label = 'D', color = '#d62728')
 
 		for i, p in enumerate(params_to_plot):
-			lns += ax1.plot(df_pop.index, df_pop[p]/1e6, label = p, color = colours[i])
+			lns += ax1.plot(df_pop.index, np.sum(pop_result_dict[p], axis = 1)/1e6, label = p, color = colours[i])
 
 		#also show IC limit
 		xlims = ax2.get_xlim()
