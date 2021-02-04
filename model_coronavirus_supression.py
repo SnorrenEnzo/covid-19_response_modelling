@@ -1907,11 +1907,8 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 		return Rt * (gamma + mu)
 
 	### differential equations of the model
-	def dRdt(param, pop):
-		return param['gamma'] * pop['I']
-
 	def dSdt(param, pop):
-		return -param['beta'] * pop['S'] * pop['I']/pop['N'] + dRdt(param, pop)
+		return -param['beta'] * pop['S'] * pop['I']/pop['N'] + param['rho'] * pop['R']
 
 	def dEdt(param, pop):
 		return param['beta'] * pop['S'] * pop['I']/pop['N'] - param['a']*pop['E']
@@ -1919,10 +1916,13 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 	def dIdt(param, pop):
 		return param['a'] * pop['E'] - (param['gamma'] + param['mu']) * pop['I']
 
+	def dRdt(param, pop):
+		return param['gamma'] * pop['I'] - param['rho'] * pop['R']
+
 	def dDdt(param, pop):
 		return param['mu'] * pop['I']
 
-	def plot_epidemiological_model(df_pop, IC_frac_of_I):
+	def plot_epidemiological_model(df_pop, IC_frac_of_I, IC_limit):
 		df_pop.set_index('Days', inplace = True)
 
 
@@ -1930,25 +1930,31 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 
 		ax2 = ax1.twinx()
 
-		params_to_plot = ['S', 'E', 'I', 'D']
+		params_to_plot = ['S', 'E', 'I', 'R', 'D']
+		colours = ['#1f77b4', '#ff7f0e', '#2ca02c', '#9467bd', '#d62728']
 
 		#we can estimate the number of people on the IC based on the fraction
 		#of infectious people that end up on the IC, see plot_hospitalization
 		lns = ax2.plot(df_pop.index, IC_frac_of_I*df_pop['I']/1e3, label = 'IC', color = 'black')
 
-		for p in params_to_plot:
-			lns += ax1.plot(df_pop.index, df_pop[p]/1e6, label = p)
+		for i, p in enumerate(params_to_plot):
+			lns += ax1.plot(df_pop.index, df_pop[p]/1e6, label = p, color = colours[i])
 
-		#also show IC limit based on https://covid-analytics.nl/index.html
+		#also show IC limit
 		xlims = ax2.get_xlim()
-		ax2.hlines(2500/1e3, xlims[0], xlims[1], color = 'dimgray', linestyle = '--')
+		ax2.hlines(IC_limit/1e3, xlims[0], xlims[1], color = 'dimgray', linestyle = '--')
 		ax2.set_xlim(xlims)
 
 		ax1.grid(linestyle = ':')
 
 		ax1.set_xlabel('Days since start')
-		ax1.set_ylabel('Number of people [M]')
-		ax2.set_ylabel('Number of people on IC [K]')
+		ax1.set_ylabel(r'Number of people [$\times 10^6$]')
+		ax2.set_ylabel(r'Number of people on IC [$\times 10^3$]')
+
+		ax1.set_title('SEISD epidemiological model of COVID-19 in the Netherlands\nstarting at 2021-01-20')
+
+		ax1.set_ylim(0)
+		ax2.set_ylim(0)
 
 		labs = [l.get_label() for l in lns]
 		ax1.legend(lns, labs, loc='best')
@@ -1970,9 +1976,10 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 	N_steps = int(N_days/dt)
 
 	IC_frac_of_I = 0.005
+	#based on https://covid-analytics.nl/index.html
+	IC_limit = 1900
 
 	### First set several rate parameters
-	a = 1/2.5 #person is about 2.5 days not contagious
 	gamma = 1/13.15
 	mu = 0.00862225 #based on Dutch data, very similar to data from China
 	Rt = 1.5
@@ -1980,9 +1987,10 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 
 	param = {
 	'beta': beta,
-	'a': a,
+	'a': 1/2.5, #person is about 2.5 days not contagious
 	'gamma': gamma,
-	'mu': mu
+	'mu': mu,
+	'rho': 1/(2.5*30) #about 2.5 months of immunity
 	}
 
 	### initialize our population at t = 0
@@ -1990,8 +1998,9 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 	I = df_prevalence.loc[startdate]['prev_avg'] * N/1e6
 	#estimate exposed people based on recovery rate gamma and exposure period 1/a
 	E = I*(param['gamma'] + param['mu']) / param['a']
-	D = 0 #start counting deaths from now on
-	S = N - I - E - D
+	D = 0
+	R = 0
+	S = N - I - E - R - D
 
 	pop = {
 	'Days': 0,
@@ -1999,7 +2008,8 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 	'S': S,
 	'E': E,
 	'I': I,
-	'D': D
+	'R': R, #start counting deaths from now on
+	'D': D #start counting deaths from now on
 	}
 
 	#dataframe which will keep track of changes in population
@@ -2011,6 +2021,7 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 		dS = dt * dSdt(param, pop)
 		dE = dt * dEdt(param, pop)
 		dI = dt * dIdt(param, pop)
+		dR = dt * dRdt(param, pop)
 		dD = dt * dDdt(param, pop)
 
 		#apply change
@@ -2018,11 +2029,12 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 		pop['S'] += dS
 		pop['E'] += dE
 		pop['I'] += dI
+		pop['R'] += dR
 		pop['D'] += dD
 
 		df_pop = df_pop.append(pop, ignore_index = True)
 
-	plot_epidemiological_model(df_pop, IC_frac_of_I)
+	plot_epidemiological_model(df_pop, IC_frac_of_I, IC_limit)
 
 
 
