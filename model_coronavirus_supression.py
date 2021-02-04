@@ -1119,7 +1119,6 @@ def load_mortality_hosp_agegroup():
 	#convert to percentages
 	totaldeaths = df_deaths_agegroups['N_deceased'].sum()
 	df_deaths_agegroups['Deceased_fraction'] = df_deaths_agegroups['N_deceased']/totaldeaths
-	del df_deaths_agegroups['N_deceased']
 
 	### now load hospitalization data
 	df_individual_agegroups = load_individual_positive_test_data(load_agegroups = True, load_datatype = 'hosp', correct_for_pop_pyramid = False)
@@ -1129,7 +1128,6 @@ def load_mortality_hosp_agegroup():
 	#convert to percentages
 	totalhosp = df_hosp_agegroups['N_hosp'].sum()
 	df_hosp_agegroups['Hosp_fraction'] = df_hosp_agegroups['N_hosp']/totaldeaths
-	del df_hosp_agegroups['N_hosp']
 
 	### determine mortality percentages for groups <50 based on literature IFR
 	ifr_dict = {
@@ -1318,7 +1316,7 @@ def plot_daily_results(use_individual_data = True, startdate = '2020-07-01'):
 
 		df_daily_covid = df_daily_covid.rename(columns = {'N_cases': 'Total_reported'})
 	else:
-		df_daily_covid = load_daily_covid(correct_for_delay = False)
+		df_daily_covid = g(correct_for_delay = False)
 	df_n_tests = load_number_of_tests(enddate = df_daily_covid.index.values[-1], ignore_last_datapoint = False)
 
 	df_response = load_government_response_data()
@@ -1990,14 +1988,14 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 
 	def dICdt(param, pop):
 		#IC overcapacity term: max(0, pop['IC'] - param['Mic'])
-		return param['i'] * param['a'] * pop['E'] - (param['gamma'] + param['mu']) * pop['IC'] - max(0, pop['IC'] - param['Mic'])
+		return param['i'] * param['a'] * pop['E'] - (param['gamma'] + param['mu']) * pop['IC']# - max(0, pop['IC'] - param['Mic'])
 
 	def dRdt(param, pop):
 		return param['gamma'] * (pop['I'] + pop['IC']) - param['rho'] * pop['R']
 
 	def dDdt(param, pop):
 		#IC overcapacity term: max(0, pop['IC'] - param['Mic'])
-		return param['mu'] * (pop['I'] + pop['IC']) + max(0, pop['IC'] - param['Mic'])
+		return param['mu'] * (pop['I'] + pop['IC'])# + max(0, pop['IC'] - param['Mic'])
 
 	def plot_epidemiological_model(df_pop, IC_frac_of_I, IC_limit):
 		df_pop.set_index('Days', inplace = True)
@@ -2053,18 +2051,28 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 	df_prevalence['prev_avg'] /= per_million_factor
 	df_IC = load_IC_data()
 	df_daily_covid = load_daily_covid(correct_for_delay = False)
+	df_individual_postest = load_individual_positive_test_data(load_agegroups = True, correct_for_pop_pyramid = False)
 	df_pop_pyramid = load_pop_pyramid()
 	df_mortality_hosp_agegroup = load_mortality_hosp_agegroup()
+
+	# get_mean_mu(df_prevalence, df_daily_covid)
 
 	agegroups = df_mortality_hosp_agegroup.index.values
 
 	#compare hospitalization fractions of agegroups with CDC data, compares reasonably
 	#https://www.cdc.gov/coronavirus/2019-ncov/covid-data/investigations-discovery/hospitalization-death-by-age.html
-	print(df_mortality_hosp_agegroup['Hosp_fraction']/df_mortality_hosp_agegroup.loc['20-29']['Hosp_fraction'])
+	# print(df_mortality_hosp_agegroup['Hosp_fraction']/df_mortality_hosp_agegroup.loc['20-29']['Hosp_fraction'])
 
-	sys.exit()
+	### determine average distribution of infections since the summer across age groups
+	#do not yet use the population pyramid corrected data, this will be done later
+	df_individual_postest = df_individual_postest.loc[(df_individual_postest.index > '2020-07-01') & (df_individual_postest.index < '2021-01-01')]
+	#sum across the dates
+	df_individual_postest = pd.DataFrame(df_individual_postest.sum(axis = 0), columns = ['Age'])
+	#normalize
+	df_individual_postest['Age_fraction'] = df_individual_postest['Age'] / df_individual_postest['Age'].sum()
 
-	# get_mean_mu(df_prevalence, df_daily_covid)
+	### determine recovery rate fractions across age groups
+	df_mortality_hosp_agegroup['Recovery_fraction'] = (df_individual_postest.Age.values - df_mortality_hosp_agegroup.N_deceased)/df_individual_postest.Age.values
 
 	#time step size in days
 	dt = 1
@@ -2078,7 +2086,7 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 	### First set several rate parameters
 	gamma = 1/13.15
 	mu_0 = 0.00049 #based on Dutch data, very similar to data from China
-	mu = mu_0**df_mortality_hosp_agegroup.Fraction.values
+	mu = mu_0**df_mortality_hosp_agegroup.Deceased_fraction.values
 	Rt = 1.5
 	beta = beta_from_Rt(Rt, gamma, mu)
 
@@ -2087,8 +2095,8 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 	'a': 1/2.5, #person is about 2.5 days not contagious
 	'gamma': gamma,
 	'mu': mu,
-	'rho': 1/(6*30), #immunity for ~6 months
-	'i': IC_frac_of_I,
+	'rho': 1/(2.5*30), #immunity for ~6 months
+	'i': IC_frac_of_I * df_mortality_hosp_agegroup.Hosp_fraction.values,
 	'Mic': IC_limit
 	}
 
@@ -2096,19 +2104,24 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 	# N = 17407585 #total population of the Netherlands on 1-1-2020
 	N = df_pop_pyramid.N_people.values
 	N_tot = np.sum(N)
-	#split prevalence equally among all age groups
-	I = df_prevalence.loc[startdate]['prev_avg'] * N/N_tot
-	#split IC occupation equally among all age groups
-	#### POSSIBLE IMPROVEMENT
-	IC = df_IC.loc[startdate]['Amount']
+	#distribute prevalence across the age groups based on positive test results,
+	#correcting for the size of the age groups
+	I = df_prevalence.loc[startdate]['prev_avg'] * df_individual_postest.Age_fraction.values * N/N_tot
+	#distribute IC occupancy based on known hospitality fractions
+	IC = df_IC.loc[startdate]['Amount'] * df_mortality_hosp_agegroup.Hosp_fraction.values
 	#estimate exposed people based on recovery rate gamma and exposure period 1/a
 	E = I*(param['gamma'] + param['mu']) / param['a']
-	D = 0
-	#estimate number of immune people by summing the prevalence in the immunity period and
-	#dividing by the average time to recovery
+	D = np.zeros(len(agegroups))
+	#estimate number of immune people by summing the prevalence in the immunity period
+	#times the data timestep (1 day, so omitted) and dividing by the average time to recovery
 	R = df_prevalence.loc[
 			(df_prevalence.index > (np.datetime64(startdate) - np.timedelta64(int(1/param['rho']), 'D'))) &
 			(df_prevalence.index < (np.datetime64(startdate) - np.timedelta64(int(1/param['gamma']), 'D')))]['prev_avg'].sum() / (1/param['gamma'])
+	#now distribute across the age groups based on positive test results
+	#where deceased are removed from the data
+	R = R * df_mortality_hosp_agegroup.Recovery_fraction.values
+
+	#get susceptible population
 	S = N - I - IC - E - R - D
 
 	pop = {
@@ -2140,9 +2153,9 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 		pop['S'] += dS
 		pop['E'] += dE
 		pop['I'] += dI
-		pop['IC'] += dIC
-		pop['R'] += dR
-		pop['D'] += dD
+		pop['IC'] = pop['IC'] + dIC
+		pop['R'] = pop['R'] + dR
+		pop['D'] = pop['D'] + dD
 
 		df_pop = df_pop.append(pop, ignore_index = True)
 
