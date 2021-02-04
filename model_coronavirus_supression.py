@@ -1971,10 +1971,15 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 
 
 	df_prevalence, df_Rt = load_prevalence_Rt_data()
+	#go back to absolute numbers right away
+	df_prevalence['prev_avg'] /= per_million_factor
 	df_IC = load_IC_data()
 	df_daily_covid = load_daily_covid(correct_for_delay = False)
+	df_pop_pyramid = load_pop_pyramid()
 
-	# get_mean_mu(df_prevalence, df_daily_covid)
+	print(df_pop_pyramid)
+
+	get_mean_mu(df_prevalence, df_daily_covid)
 
 	#time step size in days
 	dt = 1
@@ -1987,7 +1992,7 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 
 	### First set several rate parameters
 	gamma = 1/13.15
-	mu = 0.00862225 #based on Dutch data, very similar to data from China
+	mu = 0.00049 #based on Dutch data, very similar to data from China
 	Rt = 1.5
 	beta = beta_from_Rt(Rt, gamma, mu)
 
@@ -2003,7 +2008,7 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 
 	### initialize our population at t = 0
 	N = 17407585 #total population of the Netherlands on 1-1-2020
-	I = df_prevalence.loc[startdate]['prev_avg'] / per_million_factor
+	I = df_prevalence.loc[startdate]['prev_avg']
 	IC = df_IC.loc[startdate]['Amount']
 	#estimate exposed people based on recovery rate gamma and exposure period 1/a
 	E = I*(param['gamma'] + param['mu']) / param['a']
@@ -2012,7 +2017,7 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 	#dividing by the average time to recovery
 	R = df_prevalence.loc[
 			(df_prevalence.index > (np.datetime64(startdate) - np.timedelta64(int(1/param['rho']), 'D'))) &
-			(df_prevalence.index < (np.datetime64(startdate) - np.timedelta64(int(1/param['gamma']), 'D')))]['prev_avg'].sum() / per_million_factor / (1/param['gamma'])
+			(df_prevalence.index < (np.datetime64(startdate) - np.timedelta64(int(1/param['gamma']), 'D')))]['prev_avg'].sum() / (1/param['gamma'])
 	S = N - I - IC - E - R - D
 
 	pop = {
