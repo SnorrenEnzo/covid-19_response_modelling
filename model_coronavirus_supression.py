@@ -1914,13 +1914,18 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 		return param['beta'] * pop['S'] * pop['I']/pop['N'] - param['a']*pop['E']
 
 	def dIdt(param, pop):
-		return param['a'] * pop['E'] - (param['gamma'] + param['mu']) * pop['I']
+		return (1 - param['i']) * param['a'] * pop['E'] - (param['gamma'] + param['mu']) * pop['I']
+
+	def dICdt(param, pop):
+		#IC overcapacity term: max(0, pop['IC'] - param['Mic'])
+		return param['i'] * param['a'] * pop['E'] - (param['gamma'] + param['mu']) * pop['IC'] - max(0, pop['IC'] - param['Mic'])
 
 	def dRdt(param, pop):
-		return param['gamma'] * pop['I'] - param['rho'] * pop['R']
+		return param['gamma'] * (pop['I'] + pop['IC']) - param['rho'] * pop['R']
 
 	def dDdt(param, pop):
-		return param['mu'] * pop['I']
+		#IC overcapacity term: max(0, pop['IC'] - param['Mic'])
+		return param['mu'] * (pop['I'] + pop['IC']) + max(0, pop['IC'] - param['Mic'])
 
 	def plot_epidemiological_model(df_pop, IC_frac_of_I, IC_limit):
 		df_pop.set_index('Days', inplace = True)
@@ -1935,7 +1940,7 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 
 		#we can estimate the number of people on the IC based on the fraction
 		#of infectious people that end up on the IC, see plot_hospitalization
-		lns = ax2.plot(df_pop.index, IC_frac_of_I*df_pop['I']/1e3, label = 'IC', color = 'black')
+		lns = ax2.plot(df_pop.index, df_pop['IC']/1e3, label = 'IC', color = 'black')
 
 		for i, p in enumerate(params_to_plot):
 			lns += ax1.plot(df_pop.index, df_pop[p]/1e6, label = p, color = colours[i])
@@ -1966,13 +1971,14 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 
 
 	df_prevalence, df_Rt = load_prevalence_Rt_data()
+	df_IC = load_IC_data()
 	df_daily_covid = load_daily_covid(correct_for_delay = False)
 
 	# get_mean_mu(df_prevalence, df_daily_covid)
 
 	#time step size in days
 	dt = 1
-	N_days = 300
+	N_days = 250
 	N_steps = int(N_days/dt)
 
 	IC_frac_of_I = 0.005
@@ -1990,17 +1996,20 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 	'a': 1/2.5, #person is about 2.5 days not contagious
 	'gamma': gamma,
 	'mu': mu,
-	'rho': 1/(2.5*30) #about 2.5 months of immunity
+	'rho': 1/(2.5*30), #about 2.5 months of immunity
+	'i': IC_frac_of_I,
+	'Mic': IC_limit
 	}
 
 	### initialize our population at t = 0
 	N = 17407585 #total population of the Netherlands on 1-1-2020
 	I = df_prevalence.loc[startdate]['prev_avg'] * N/1e6
+	IC = df_IC.loc[startdate]['Amount']
 	#estimate exposed people based on recovery rate gamma and exposure period 1/a
 	E = I*(param['gamma'] + param['mu']) / param['a']
 	D = 0
 	R = 0
-	S = N - I - E - R - D
+	S = N - I - IC - E - R - D
 
 	pop = {
 	'Days': 0,
@@ -2008,6 +2017,7 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 	'S': S,
 	'E': E,
 	'I': I,
+	'IC': IC,
 	'R': R, #start counting deaths from now on
 	'D': D #start counting deaths from now on
 	}
@@ -2021,6 +2031,7 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 		dS = dt * dSdt(param, pop)
 		dE = dt * dEdt(param, pop)
 		dI = dt * dIdt(param, pop)
+		dIC = dt * dICdt(param, pop)
 		dR = dt * dRdt(param, pop)
 		dD = dt * dDdt(param, pop)
 
@@ -2029,6 +2040,7 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 		pop['S'] += dS
 		pop['E'] += dE
 		pop['I'] += dI
+		pop['IC'] += dIC
 		pop['R'] += dR
 		pop['D'] += dD
 
