@@ -832,7 +832,7 @@ def load_pop_pyramid():
 
 	return df_pop_pyramid_translated
 
-def load_individual_positive_test_data(load_agegroups = False):
+def load_individual_positive_test_data(load_agegroups = False, load_deaths = False):
 	"""
 	Load data on individual cases of positive tests of COVID-19, including data
 	such as age, and date of disease onset/positive lab result/GGD notification,
@@ -852,7 +852,7 @@ def load_individual_positive_test_data(load_agegroups = False):
 	downloadSave(individual_data_url, individual_data_fname, check_file_exists = True)
 
 	#load only a few columns
-	df_individual = pd.read_csv(individual_data_fname, usecols = ['Date_statistics', 'Date_statistics_type', 'Agegroup'], sep = ';')
+	df_individual = pd.read_csv(individual_data_fname, usecols = ['Date_statistics', 'Date_statistics_type', 'Agegroup', 'Deceased'], sep = ';')
 
 	df_individual = df_individual.rename(columns = {'Date_statistics': 'Date'})
 	df_individual['Date'] = pd.to_datetime(df_individual['Date'], format = '%Y-%m-%d')
@@ -870,6 +870,13 @@ def load_individual_positive_test_data(load_agegroups = False):
 	del df_individual['Date_statistics_type']
 
 	if load_agegroups:
+		#if we only want to look at deaths, remove all entries which do not conceirn
+		#deceased people
+		if load_deaths:
+			df_individual = df_individual.loc[df_individual['Deceased'] == 'Yes']
+
+		del df_individual['Deceased']
+
 		#we also want an indication of the distribution of the different age groups,
 		#so we first get them in different columns
 		all_agegroups = np.sort(df_individual['Agegroup'].unique())
@@ -878,7 +885,9 @@ def load_individual_positive_test_data(load_agegroups = False):
 		df_individual_agegroups = df_individual_agegroups.groupby(['Date']).agg(dict(zip(all_agegroups, ['sum']*len(all_agegroups))))
 
 		#remove pesky columns like '<50' and 'unknown'
-		del df_individual_agegroups['<50'], df_individual_agegroups['Unknown']
+		for removecol in ['<50', 'Unknown']:
+			if removecol in df_individual_agegroups.columns:
+				del df_individual_agegroups[removecol]
 
 		### correct for population pyramid
 		#load data
@@ -894,6 +903,7 @@ def load_individual_positive_test_data(load_agegroups = False):
 
 		return df_individual_agegroups
 	else:
+		del df_individual['Deceased']
 		#we need a new column for the number of cases
 		df_individual.loc[:,'N_cases'] = 1
 
@@ -1089,6 +1099,15 @@ def load_behaviour_data(startdate, enddate):
 		df_behaviour_incols = df_sub
 
 	return df_behaviour_incols
+
+def load_mortality_agegroup():
+	df_individual_agegroups = load_individual_positive_test_data(load_agegroups = True, load_deaths = True)
+
+	print(df_individual_agegroups)
+
+	sys.exit()
+
+	return df_individual_agegroups
 
 
 def plot_prevalence_R():
@@ -1934,13 +1953,17 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 		fig, ax1 = plt.subplots()
 
 		ax2 = ax1.twinx()
+		ax3 = ax1.twinx()
 
-		params_to_plot = ['S', 'E', 'I', 'R', 'D']
+		ax3.spines['right'].set_position(('axes', 1.12))
+
+		params_to_plot = ['S', 'E', 'I', 'R']
 		colours = ['#1f77b4', '#ff7f0e', '#2ca02c', '#9467bd', '#d62728']
 
 		#we can estimate the number of people on the IC based on the fraction
 		#of infectious people that end up on the IC, see plot_hospitalization
 		lns = ax2.plot(df_pop.index, df_pop['IC']/1e3, label = 'IC', color = 'black')
+		lns += ax3.plot(df_pop.index, df_pop['D']/1e3, label = 'D', color = '#d62728')
 
 		for i, p in enumerate(params_to_plot):
 			lns += ax1.plot(df_pop.index, df_pop[p]/1e6, label = p, color = colours[i])
@@ -1954,12 +1977,14 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 
 		ax1.set_xlabel('Days since start')
 		ax1.set_ylabel(r'Number of people [$\times 10^6$]')
-		ax2.set_ylabel(r'Number of people on IC [$\times 10^3$]')
+		ax2.set_ylabel(r'Number of people in IC [$\times 10^3$]')
+		ax3.set_ylabel(r'Number of deceased [$\times 10^3$]')
 
 		ax1.set_title('SEISD epidemiological model of COVID-19 in the Netherlands\nstarting at 2021-01-20')
 
 		ax1.set_ylim(0)
 		ax2.set_ylim(0)
+		ax3.set_ylim(0)
 
 		labs = [l.get_label() for l in lns]
 		ax1.legend(lns, labs, loc='best')
@@ -1976,10 +2001,13 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 	df_IC = load_IC_data()
 	df_daily_covid = load_daily_covid(correct_for_delay = False)
 	df_pop_pyramid = load_pop_pyramid()
+	df_mortality_agegroup_perc = load_mortality_agegroup()
 
-	print(df_pop_pyramid)
+	print(df_mortality_agegroup_perc)
 
-	get_mean_mu(df_prevalence, df_daily_covid)
+	sys.exit()
+
+	# get_mean_mu(df_prevalence, df_daily_covid)
 
 	#time step size in days
 	dt = 1
@@ -1992,7 +2020,7 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 
 	### First set several rate parameters
 	gamma = 1/13.15
-	mu = 0.00049 #based on Dutch data, very similar to data from China
+	mu_0 = 0.00049 #based on Dutch data, very similar to data from China
 	Rt = 1.5
 	beta = beta_from_Rt(Rt, gamma, mu)
 
@@ -2001,7 +2029,7 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 	'a': 1/2.5, #person is about 2.5 days not contagious
 	'gamma': gamma,
 	'mu': mu,
-	'rho': 1/(2.5*30), #about 2.5 months of immunity
+	'rho': 1/(6*30), #immunity for ~6 months
 	'i': IC_frac_of_I,
 	'Mic': IC_limit
 	}
