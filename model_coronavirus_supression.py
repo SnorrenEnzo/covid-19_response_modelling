@@ -2003,12 +2003,16 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 
 	### initialize our population at t = 0
 	N = 17407585 #total population of the Netherlands on 1-1-2020
-	I = df_prevalence.loc[startdate]['prev_avg'] * N/1e6
+	I = df_prevalence.loc[startdate]['prev_avg'] / per_million_factor
 	IC = df_IC.loc[startdate]['Amount']
 	#estimate exposed people based on recovery rate gamma and exposure period 1/a
 	E = I*(param['gamma'] + param['mu']) / param['a']
 	D = 0
-	R = 0
+	#estimate number of immune people by summing the prevalence in the immunity period and
+	#dividing by the average time to recovery
+	R = df_prevalence.loc[
+			(df_prevalence.index > (np.datetime64(startdate) - np.timedelta64(int(1/param['rho']), 'D'))) &
+			(df_prevalence.index < (np.datetime64(startdate) - np.timedelta64(int(1/param['gamma']), 'D')))]['prev_avg'].sum() / per_million_factor / (1/param['gamma'])
 	S = N - I - IC - E - R - D
 
 	pop = {
