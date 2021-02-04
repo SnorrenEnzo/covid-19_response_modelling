@@ -832,7 +832,7 @@ def load_pop_pyramid():
 
 	return df_pop_pyramid_translated
 
-def load_individual_positive_test_data(load_agegroups = False, load_deaths = False, correct_for_pop_pyramid = True):
+def load_individual_positive_test_data(load_agegroups = False, load_datatype = 'pos_test', correct_for_pop_pyramid = True):
 	"""
 	Load data on individual cases of positive tests of COVID-19, including data
 	such as age, and date of disease onset/positive lab result/GGD notification,
@@ -852,7 +852,7 @@ def load_individual_positive_test_data(load_agegroups = False, load_deaths = Fal
 	downloadSave(individual_data_url, individual_data_fname, check_file_exists = True)
 
 	#load only a few columns
-	df_individual = pd.read_csv(individual_data_fname, usecols = ['Date_statistics', 'Date_statistics_type', 'Agegroup', 'Deceased'], sep = ';')
+	df_individual = pd.read_csv(individual_data_fname, usecols = ['Date_statistics', 'Date_statistics_type', 'Agegroup', 'Hospital_admission', 'Deceased'], sep = ';')
 
 	df_individual = df_individual.rename(columns = {'Date_statistics': 'Date'})
 	df_individual['Date'] = pd.to_datetime(df_individual['Date'], format = '%Y-%m-%d')
@@ -872,10 +872,12 @@ def load_individual_positive_test_data(load_agegroups = False, load_deaths = Fal
 	if load_agegroups:
 		#if we only want to look at deaths, remove all entries which do not conceirn
 		#deceased people
-		if load_deaths:
+		if load_datatype == 'deaths':
 			df_individual = df_individual.loc[df_individual['Deceased'] == 'Yes']
+		elif load_datatype == 'hosp':
+			df_individual = df_individual.loc[df_individual['Hospital_admission'] == 'Yes']
 
-		del df_individual['Deceased']
+		del df_individual['Deceased'], df_individual['Hospital_admission']
 
 		#we also want an indication of the distribution of the different age groups,
 		#so we first get them in different columns
@@ -885,7 +887,7 @@ def load_individual_positive_test_data(load_agegroups = False, load_deaths = Fal
 		df_individual_agegroups = df_individual_agegroups.groupby(['Date']).agg(dict(zip(all_agegroups, ['sum']*len(all_agegroups))))
 
 		#remove pesky columns like '<50' and 'unknown'
-		if load_deaths:
+		if load_datatype != 'pos_test':
 			removecols = ['Unknown']
 		else:
 			removecols = ['<50', 'Unknown']
@@ -1105,16 +1107,29 @@ def load_behaviour_data(startdate, enddate):
 
 	return df_behaviour_incols
 
-def load_mortality_agegroup():
-	df_individual_agegroups = load_individual_positive_test_data(load_agegroups = True, load_deaths = True, correct_for_pop_pyramid = False)
+def load_mortality_hosp_agegroup():
+	"""
+	Load data on mortality and hospitalization per age group
+	"""
+	### First load mortality data
+	df_individual_agegroups = load_individual_positive_test_data(load_agegroups = True, load_datatype = 'deaths', correct_for_pop_pyramid = False)
 
 	#sum accross all dates
 	df_deaths_agegroups = pd.DataFrame(df_individual_agegroups.sum(axis = 0), columns = ['N_deceased'])
-
 	#convert to percentages
 	totaldeaths = df_deaths_agegroups['N_deceased'].sum()
+	df_deaths_agegroups['Deceased_fraction'] = df_deaths_agegroups['N_deceased']/totaldeaths
+	del df_deaths_agegroups['N_deceased']
 
-	df_deaths_agegroups['Fraction'] = df_deaths_agegroups['N_deceased']/totaldeaths
+	### now load hospitalization data
+	df_individual_agegroups = load_individual_positive_test_data(load_agegroups = True, load_datatype = 'hosp', correct_for_pop_pyramid = False)
+
+	#sum accross all dates
+	df_hosp_agegroups = pd.DataFrame(df_individual_agegroups.sum(axis = 0), columns = ['N_hosp'])
+	#convert to percentages
+	totalhosp = df_hosp_agegroups['N_hosp'].sum()
+	df_hosp_agegroups['Hosp_fraction'] = df_hosp_agegroups['N_hosp']/totaldeaths
+	del df_hosp_agegroups['N_hosp']
 
 	### determine mortality percentages for groups <50 based on literature IFR
 	ifr_dict = {
@@ -1132,11 +1147,20 @@ def load_mortality_agegroup():
 
 	for agegroup in df_IFR.index:
 		df_deaths_agegroups.loc[agegroup] = df_deaths_agegroups.loc['<50'] * df_IFR.loc[agegroup]['Fraction']
-
 	df_deaths_agegroups = df_deaths_agegroups.drop('<50')
 	df_deaths_agegroups = df_deaths_agegroups.sort_index()
 
-	return df_deaths_agegroups
+	#apply the same estimation to hospitalization, so also based on IFR
+	#note that some of the persons hospitalized with age <50 are already noted
+	for agegroup in df_IFR.index:
+		df_hosp_agegroups.loc[agegroup] += df_hosp_agegroups.loc['<50'] * df_IFR.loc[agegroup]['Fraction']
+	df_hosp_agegroups = df_hosp_agegroups.drop('<50')
+	df_hosp_agegroups = df_hosp_agegroups.sort_index()
+
+	#now join the dataframes
+	df_deaths_hosp_agegroups = df_hosp_agegroups.join(df_deaths_agegroups, how = 'inner')
+
+	return df_deaths_hosp_agegroups
 
 
 def plot_prevalence_R():
@@ -2030,9 +2054,13 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 	df_IC = load_IC_data()
 	df_daily_covid = load_daily_covid(correct_for_delay = False)
 	df_pop_pyramid = load_pop_pyramid()
-	df_mortality_agegroup_perc = load_mortality_agegroup()
+	df_mortality_hosp_agegroup = load_mortality_hosp_agegroup()
 
-	print(df_mortality_agegroup_perc)
+	agegroups = df_mortality_hosp_agegroup.index.values
+
+	#compare hospitalization fractions of agegroups with CDC data, compares reasonably
+	#https://www.cdc.gov/coronavirus/2019-ncov/covid-data/investigations-discovery/hospitalization-death-by-age.html
+	print(df_mortality_hosp_agegroup['Hosp_fraction']/df_mortality_hosp_agegroup.loc['20-29']['Hosp_fraction'])
 
 	sys.exit()
 
@@ -2050,6 +2078,7 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 	### First set several rate parameters
 	gamma = 1/13.15
 	mu_0 = 0.00049 #based on Dutch data, very similar to data from China
+	mu = mu_0**df_mortality_hosp_agegroup.Fraction.values
 	Rt = 1.5
 	beta = beta_from_Rt(Rt, gamma, mu)
 
@@ -2064,8 +2093,13 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 	}
 
 	### initialize our population at t = 0
-	N = 17407585 #total population of the Netherlands on 1-1-2020
-	I = df_prevalence.loc[startdate]['prev_avg']
+	# N = 17407585 #total population of the Netherlands on 1-1-2020
+	N = df_pop_pyramid.N_people.values
+	N_tot = np.sum(N)
+	#split prevalence equally among all age groups
+	I = df_prevalence.loc[startdate]['prev_avg'] * N/N_tot
+	#split IC occupation equally among all age groups
+	#### POSSIBLE IMPROVEMENT
 	IC = df_IC.loc[startdate]['Amount']
 	#estimate exposed people based on recovery rate gamma and exposure period 1/a
 	E = I*(param['gamma'] + param['mu']) / param['a']

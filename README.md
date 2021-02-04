@@ -76,6 +76,7 @@ Days contagious after infection [link](https://www.theladders.com/career-advice/
 
 IC rates information
 - 13.8% of infections are severe, 6.1% are critical [link](https://www.medrxiv.org/content/medrxiv/early/2020/04/21/2020.03.19.20039388.full.pdf)
+- Hospitalization based on age: [link](https://www.cdc.gov/coronavirus/2019-ncov/covid-data/investigations-discovery/hospitalization-death-by-age.html)
 
 ### Data visualization
 [covid-analytics.nl](https://covid-analytics.nl/population.html): the general test positivity rate graphs etc, but also detailed and complete information on hospital bed/ICU usage and up to date capacity.
