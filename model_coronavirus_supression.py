@@ -832,7 +832,7 @@ def load_pop_pyramid():
 
 	return df_pop_pyramid_translated
 
-def load_individual_positive_test_data(load_agegroups = False, load_deaths = False):
+def load_individual_positive_test_data(load_agegroups = False, load_deaths = False, correct_for_pop_pyramid = True):
 	"""
 	Load data on individual cases of positive tests of COVID-19, including data
 	such as age, and date of disease onset/positive lab result/GGD notification,
@@ -885,21 +885,26 @@ def load_individual_positive_test_data(load_agegroups = False, load_deaths = Fal
 		df_individual_agegroups = df_individual_agegroups.groupby(['Date']).agg(dict(zip(all_agegroups, ['sum']*len(all_agegroups))))
 
 		#remove pesky columns like '<50' and 'unknown'
-		for removecol in ['<50', 'Unknown']:
+		if load_deaths:
+			removecols = ['Unknown']
+		else:
+			removecols = ['<50', 'Unknown']
+		for removecol in removecols:
 			if removecol in df_individual_agegroups.columns:
 				del df_individual_agegroups[removecol]
 
-		### correct for population pyramid
-		#load data
-		df_pop_pyramid = load_pop_pyramid()
+		if correct_for_pop_pyramid:
+			### correct for population pyramid
+			#load data
+			df_pop_pyramid = load_pop_pyramid()
 
-		#run over the columns and convert to a fraction of the whole population in
-		#that age group
-		for col in df_individual_agegroups.columns:
-			df_individual_agegroups[col] /= float(df_pop_pyramid.loc[col])
+			#run over the columns and convert to a fraction of the whole population in
+			#that age group
+			for col in df_individual_agegroups.columns:
+				df_individual_agegroups[col] /= float(df_pop_pyramid.loc[col])
 
-		#add dates with no cases
-		df_individual_agegroups = df_individual_agegroups.resample('1d').asfreq(fill_value = 0)
+			#add dates with no cases
+			df_individual_agegroups = df_individual_agegroups.resample('1d').asfreq(fill_value = 0)
 
 		return df_individual_agegroups
 	else:
@@ -1101,13 +1106,37 @@ def load_behaviour_data(startdate, enddate):
 	return df_behaviour_incols
 
 def load_mortality_agegroup():
-	df_individual_agegroups = load_individual_positive_test_data(load_agegroups = True, load_deaths = True)
+	df_individual_agegroups = load_individual_positive_test_data(load_agegroups = True, load_deaths = True, correct_for_pop_pyramid = False)
 
-	print(df_individual_agegroups)
+	#sum accross all dates
+	df_deaths_agegroups = pd.DataFrame(df_individual_agegroups.sum(axis = 0), columns = ['N_deceased'])
 
-	sys.exit()
+	#convert to percentages
+	totaldeaths = df_deaths_agegroups['N_deceased'].sum()
 
-	return df_individual_agegroups
+	df_deaths_agegroups['Fraction'] = df_deaths_agegroups['N_deceased']/totaldeaths
+
+	### determine mortality percentages for groups <50 based on literature IFR
+	ifr_dict = {
+				'0-9': 0.00004,
+				'10-19': 0.00004,
+				'20-29': 0.00021,
+				'30-39': 0.0009,
+				'40-49': 0.002
+				}
+	df_IFR = pd.DataFrame.from_dict({'Age': list(ifr_dict.keys()), 'IFR': list(ifr_dict.values())})
+	df_IFR.set_index('Age', inplace = True)
+
+	#determine fraction of deaths that can be attributed to age groups <50
+	df_IFR['Fraction'] = df_IFR['IFR']/df_IFR['IFR'].sum()
+
+	for agegroup in df_IFR.index:
+		df_deaths_agegroups.loc[agegroup] = df_deaths_agegroups.loc['<50'] * df_IFR.loc[agegroup]['Fraction']
+
+	df_deaths_agegroups = df_deaths_agegroups.drop('<50')
+	df_deaths_agegroups = df_deaths_agegroups.sort_index()
+
+	return df_deaths_agegroups
 
 
 def plot_prevalence_R():
