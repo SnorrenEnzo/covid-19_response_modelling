@@ -1127,7 +1127,7 @@ def load_mortality_hosp_agegroup():
 	df_hosp_agegroups = pd.DataFrame(df_individual_agegroups.sum(axis = 0), columns = ['N_hosp'])
 	#convert to percentages
 	totalhosp = df_hosp_agegroups['N_hosp'].sum()
-	df_hosp_agegroups['Hosp_fraction'] = df_hosp_agegroups['N_hosp']/totaldeaths
+	df_hosp_agegroups['Hosp_fraction'] = df_hosp_agegroups['N_hosp']/totalhosp
 
 	### determine mortality percentages for groups <50 based on literature IFR
 	ifr_dict = {
@@ -1979,6 +1979,36 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 	def array_relu(x):
 		return np.max([np.zeros(len(x)), x], axis = 0)
 
+	def IC_removal(param, pop):
+		"""
+		If the total number of persons (across age groups) exceeds the IC capacity,
+		then first start removing elderly from the IC
+		"""
+		np.set_printoptions(precision=3)
+
+		if np.sum(pop['IC']) - param['Mic'] > 0:
+			#iteratively remove people from IC
+			remove_IC = np.zeros(len(pop['IC']))
+
+			#determine how many people still need to be removed from the IC
+			n_need_to_be_removed = np.sum(pop['IC'] - remove_IC) - param['Mic']
+			i = len(remove_IC) - 1
+
+			#iterate through the age groups from old to young until enough people are
+			#removed from the IC
+			while n_need_to_be_removed > 0:
+				if n_need_to_be_removed > pop['IC'][i]:
+					remove_IC[i] = pop['IC'][i]
+				else:
+					remove_IC[i] = n_need_to_be_removed
+
+				i -= 1
+				n_need_to_be_removed = np.sum(pop['IC'] - remove_IC) - param['Mic']
+
+			return remove_IC
+		else:
+			return np.zeros(len(pop['IC']))
+
 	### differential equations of the model
 	def dSdt(param, pop):
 		return -param['beta'] * pop['S'] * pop['I']/pop['N'] + param['rho'] * pop['R']
@@ -1990,15 +2020,15 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 		return (1 - param['i']) * param['a'] * pop['E'] - (param['gamma'] + param['mu']) * pop['I']
 
 	def dICdt(param, pop):
-		#IC overcapacity term: max(0, pop['IC'] - param['Mic'])
-		return param['i'] * param['a'] * pop['E'] - (param['gamma'] + param['mu']) * pop['IC'] - array_relu(pop['IC'] - param['Mic'])
+		#IC overcapacity term
+		return param['i'] * param['a'] * pop['E'] - (param['gamma'] + param['mu']) * pop['IC'] - IC_removal(param, pop)
 
 	def dRdt(param, pop):
 		return param['gamma'] * (pop['I'] + pop['IC']) - param['rho'] * pop['R']
 
 	def dDdt(param, pop):
-		#IC overcapacity term: max(0, pop['IC'] - param['Mic'])
-		return param['mu'] * (pop['I'] + pop['IC']) + array_relu(pop['IC'] - param['Mic'])
+		#IC overcapacity term
+		return param['mu'] * (pop['I'] + pop['IC']) + IC_removal(param, pop)
 
 	def column_to_2D_array(series):
 		"""
