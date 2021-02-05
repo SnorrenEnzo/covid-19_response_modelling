@@ -2187,7 +2187,7 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 	#spread across age groups using mortality rates, correcting for the
 	#population pyramid
 	mu = mu_0 * df_mortality_hosp_agegroup.Deceased_fraction.values/np.mean(df_mortality_hosp_agegroup.Deceased_fraction) / (N/np.mean(N))
-	Rt = 2
+	Rt = 1.5
 	beta = beta_from_Rt(Rt, gamma, mu)
 
 	param = {

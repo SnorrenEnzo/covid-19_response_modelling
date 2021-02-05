@@ -1,7 +1,8 @@
 ## Modelling the outcome of Dutch government coronavirus response
 
 ### TODO:
-- Split the model up into different age groups with different mu.
+- Split the model up into different age groups with different mu
+	- Plot deaths per age group
 
 ### Data sources
 
