@@ -2045,7 +2045,7 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 
 		return X
 
-	def plot_epidemiological_model(df_pop, IC_frac_of_I, IC_limit):
+	def plot_epidemiological_model(df_pop, IC_frac_of_I, IC_limit, df_pop_pyramid):
 		params_to_plot = ['S', 'E', 'I', 'R']
 
 		all_columns = params_to_plot + ['IC', 'D']
@@ -2056,51 +2056,88 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 		for col in all_columns:
 			pop_result_dict[col] = column_to_2D_array(df_pop[col])
 
-		# print(pop_result_dict['S'])
+		#Plot the total SEIRD+IC values
+		if True:
+			fig, ax1 = plt.subplots()
 
+			ax2 = ax1.twinx()
+			ax3 = ax1.twinx()
 
-		fig, ax1 = plt.subplots()
+			ax3.spines['right'].set_position(('axes', 1.14))
 
-		ax2 = ax1.twinx()
-		ax3 = ax1.twinx()
+			colours = ['#1f77b4', '#ff7f0e', '#2ca02c', '#9467bd', '#d62728']
 
-		ax3.spines['right'].set_position(('axes', 1.12))
+			#we can estimate the number of people on the IC based on the fraction
+			#of infectious people that end up on the IC, see plot_hospitalization
+			lns = ax2.plot(df_pop.index, np.sum(pop_result_dict['IC'], axis = 1)/1e3, label = 'IC', color = 'black')
+			lns += ax3.plot(df_pop.index, np.sum(pop_result_dict['D'], axis = 1)/1e3, label = 'D', color = '#d62728')
 
-		colours = ['#1f77b4', '#ff7f0e', '#2ca02c', '#9467bd', '#d62728']
+			for i, p in enumerate(params_to_plot):
+				lns += ax1.plot(df_pop.index, np.sum(pop_result_dict[p], axis = 1)/1e6, label = p, color = colours[i])
 
-		#we can estimate the number of people on the IC based on the fraction
-		#of infectious people that end up on the IC, see plot_hospitalization
-		lns = ax2.plot(df_pop.index, np.sum(pop_result_dict['IC'], axis = 1)/1e3, label = 'IC', color = 'black')
-		lns += ax3.plot(df_pop.index, np.sum(pop_result_dict['D'], axis = 1)/1e3, label = 'D', color = '#d62728')
+			#also show IC limit
+			xlims = ax2.get_xlim()
+			ax2.hlines(IC_limit/1e3, xlims[0], xlims[1], color = 'dimgray', linestyle = '--')
+			ax2.set_xlim(xlims)
 
-		for i, p in enumerate(params_to_plot):
-			lns += ax1.plot(df_pop.index, np.sum(pop_result_dict[p], axis = 1)/1e6, label = p, color = colours[i])
+			ax1.grid(linestyle = ':')
 
-		#also show IC limit
-		xlims = ax2.get_xlim()
-		ax2.hlines(IC_limit/1e3, xlims[0], xlims[1], color = 'dimgray', linestyle = '--')
-		ax2.set_xlim(xlims)
+			ax1.set_xlabel('Days since start')
+			ax1.set_ylabel(r'Number of people [$\times 10^6$]')
+			ax2.set_ylabel(r'Number of people in IC [$\times 10^3$]')
+			ax3.set_ylabel(r'Number of deceased [$\times 10^3$]')
 
-		ax1.grid(linestyle = ':')
+			ax1.set_title('SEIRSD+IC epidemiological model of COVID-19 in the Netherlands\nstarting at 2021-01-20')
 
-		ax1.set_xlabel('Days since start')
-		ax1.set_ylabel(r'Number of people [$\times 10^6$]')
-		ax2.set_ylabel(r'Number of people in IC [$\times 10^3$]')
-		ax3.set_ylabel(r'Number of deceased [$\times 10^3$]')
+			ax1.set_ylim(0)
+			ax2.set_ylim(0)
+			ax3.set_ylim(0)
 
-		ax1.set_title('SEISD epidemiological model of COVID-19 in the Netherlands\nstarting at 2021-01-20')
+			labs = [l.get_label() for l in lns]
+			ax1.legend(lns, labs, loc='best')
+			ax1.grid(linestyle = ':')
 
-		ax1.set_ylim(0)
-		ax2.set_ylim(0)
-		ax3.set_ylim(0)
+			plt.savefig(f'{epidem_modelling_plotloc}Model_result_population.png', dpi = 200, bbox_inches = 'tight')
+			plt.close()
 
-		labs = [l.get_label() for l in lns]
-		ax1.legend(lns, labs, loc='best')
-		ax1.grid(linestyle = ':')
+		#plot only deaths per age group
+		if True:
+			fig, ax1 = plt.subplots()
 
-		plt.savefig(f'{epidem_modelling_plotloc}Model_result_population.png', dpi = 200, bbox_inches = 'tight')
-		plt.close()
+			ax2 = ax1.twinx()
 
+			# cmap = plt.get_cmap('Oranges')
+			cmap = turbo_cmap
+			cNorm  = mcolors.Normalize(vmin = 0, vmax = len(df_pop_pyramid) - 1)
+			scalarMap = cmx.ScalarMappable(norm = cNorm, cmap = cmap)
+
+			lns = ax1.plot(df_pop.index, np.sum(pop_result_dict['IC'], axis = 1)/1e3, label = 'IC', color = 'black', linestyle = '-.')
+
+			for i, agegroup in enumerate(df_pop_pyramid.index):
+				lns += ax2.plot(df_pop.index, pop_result_dict['D'][:,i]/df_pop_pyramid.loc[agegroup].N_people, label = agegroup, color = scalarMap.to_rgba(i))
+
+			#also show IC limit
+			xlims = ax1.get_xlim()
+			ax1.hlines(IC_limit/1e3, xlims[0], xlims[1], color = 'dimgray', linestyle = '--')
+			ax1.set_xlim(xlims)
+
+			ax1.grid(linestyle = ':')
+
+			ax1.set_xlabel('Days since start')
+			ax1.set_ylabel(r'Number of persons in IC [$\times 10^3$]')
+			ax2.set_ylabel(r'Fraction of age group deceased')
+
+			ax1.set_title('SEIRSD+IC epidemiological model of COVID-19 in the Netherlands\nstarting at 2021-01-20')
+
+			ax1.set_ylim(0)
+			ax2.set_ylim(0)
+
+			labs = [l.get_label() for l in lns]
+			ax1.legend(lns, labs, loc = 'upper left', prop = {'size': 8})
+			ax1.grid(linestyle = ':')
+
+			plt.savefig(f'{epidem_modelling_plotloc}Model_result_deceased.png', dpi = 200, bbox_inches = 'tight')
+			plt.close()
 
 
 	df_prevalence, df_Rt = load_prevalence_Rt_data()
@@ -2152,7 +2189,7 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 	#spread across age groups using mortality rates, correcting for the
 	#population pyramid
 	mu = mu_0 * df_mortality_hosp_agegroup.Deceased_fraction.values/np.mean(df_mortality_hosp_agegroup.Deceased_fraction) * N/np.mean(N)
-	Rt = 1.5
+	Rt = 2
 	beta = beta_from_Rt(Rt, gamma, mu)
 
 	param = {
@@ -2160,7 +2197,7 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 	'a': 1/2.5, #person is about 2.5 days not contagious
 	'gamma': gamma,
 	'mu': mu,
-	'rho': 1/(2.5*30), #immunity for ~6 months
+	'rho': 1/(6*30), #immunity for ~6 months
 	'i': IC_frac_of_I * (df_mortality_hosp_agegroup.Hosp_fraction.values/np.mean(df_mortality_hosp_agegroup.Hosp_fraction))  * N/np.mean(N),
 	'Mic': IC_limit
 	}
@@ -2221,9 +2258,7 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 
 		df_pop = df_pop.append(pop, ignore_index = True)
 
-	plot_epidemiological_model(df_pop, IC_frac_of_I, IC_limit)
-
-
+	plot_epidemiological_model(df_pop, IC_frac_of_I, IC_limit, df_pop_pyramid)
 
 
 
