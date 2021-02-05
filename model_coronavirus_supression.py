@@ -1984,7 +1984,6 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 		If the total number of persons (across age groups) exceeds the IC capacity,
 		then first start removing elderly from the IC
 		"""
-		np.set_printoptions(precision=3)
 
 		if np.sum(pop['IC']) - param['Mic'] > 0:
 			#iteratively remove people from IC
@@ -2139,6 +2138,7 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 			plt.savefig(f'{epidem_modelling_plotloc}Model_result_deceased.png', dpi = 200, bbox_inches = 'tight')
 			plt.close()
 
+	np.set_printoptions(precision=3)
 
 	df_prevalence, df_Rt = load_prevalence_Rt_data()
 	#go back to absolute numbers right away
@@ -2188,7 +2188,7 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 	mu_0 = 0.00049 #based on Dutch data, very similar to data from China
 	#spread across age groups using mortality rates, correcting for the
 	#population pyramid
-	mu = mu_0 * df_mortality_hosp_agegroup.Deceased_fraction.values/np.mean(df_mortality_hosp_agegroup.Deceased_fraction) * N/np.mean(N)
+	mu = mu_0 * df_mortality_hosp_agegroup.Deceased_fraction.values/np.mean(df_mortality_hosp_agegroup.Deceased_fraction)
 	Rt = 2
 	beta = beta_from_Rt(Rt, gamma, mu)
 
@@ -2198,7 +2198,7 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 	'gamma': gamma,
 	'mu': mu,
 	'rho': 1/(6*30), #immunity for ~6 months
-	'i': IC_frac_of_I * (df_mortality_hosp_agegroup.Hosp_fraction.values/np.mean(df_mortality_hosp_agegroup.Hosp_fraction))  * N/np.mean(N),
+	'i': IC_frac_of_I * (df_mortality_hosp_agegroup.Hosp_fraction.values/np.mean(df_mortality_hosp_agegroup.Hosp_fraction)),
 	'Mic': IC_limit
 	}
 
