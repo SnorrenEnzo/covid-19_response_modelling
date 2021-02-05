@@ -1976,6 +1976,9 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 	def beta_from_Rt(Rt, gamma, mu):
 		return Rt * (gamma + mu)
 
+	def array_relu(x):
+		return np.max([np.zeros(len(x)), x], axis = 0)
+
 	### differential equations of the model
 	def dSdt(param, pop):
 		return -param['beta'] * pop['S'] * pop['I']/pop['N'] + param['rho'] * pop['R']
@@ -1988,14 +1991,14 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 
 	def dICdt(param, pop):
 		#IC overcapacity term: max(0, pop['IC'] - param['Mic'])
-		return param['i'] * param['a'] * pop['E'] - (param['gamma'] + param['mu']) * pop['IC']# - max(0, pop['IC'] - param['Mic'])
+		return param['i'] * param['a'] * pop['E'] - (param['gamma'] + param['mu']) * pop['IC'] - array_relu(pop['IC'] - param['Mic'])
 
 	def dRdt(param, pop):
 		return param['gamma'] * (pop['I'] + pop['IC']) - param['rho'] * pop['R']
 
 	def dDdt(param, pop):
 		#IC overcapacity term: max(0, pop['IC'] - param['Mic'])
-		return param['mu'] * (pop['I'] + pop['IC'])# + max(0, pop['IC'] - param['Mic'])
+		return param['mu'] * (pop['I'] + pop['IC']) + array_relu(pop['IC'] - param['Mic'])
 
 	def column_to_2D_array(series):
 		"""
@@ -2099,8 +2102,6 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 	### this does not sum to 1 across age groups, it is the fraction per age group
 	### that recovers
 	df_mortality_hosp_agegroup['Recovery_fraction'] = (df_individual_postest.Age.values - df_mortality_hosp_agegroup.N_deceased)/df_individual_postest.Age.values
-
-	###
 
 	#time step size in days
 	dt = 1
