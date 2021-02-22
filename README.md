@@ -14,6 +14,7 @@
 - More raw data: [link](https://coronadashboard.rijksoverheid.nl/verantwoording)
 - Behaviour studies: [link](https://data.rivm.nl/geonetwork/srv/dut/catalog.search#/metadata/8a72d78a-fcf8-4882-b0ab-cd594961a267?tab=relations)
 - COVID-19 new cases, hospital admission and death rates per municipality: [link](https://data.rivm.nl/geonetwork/srv/dut/catalog.search#/metadata/5f6bc429-1596-490e-8618-1ed8fd768427?tab=relations)
+- Data on all tests performed (total number, number positive): [link](https://data.rivm.nl/geonetwork/srv/dut/catalog.search#/metadata/0f3336f5-0f16-462c-9031-bb60adde4af1)
 
 Weekly update [link](https://www.rivm.nl/coronavirus-covid-19/actueel) with:
 - Number of tests performed per week

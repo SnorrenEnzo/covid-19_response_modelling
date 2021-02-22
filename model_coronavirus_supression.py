@@ -318,6 +318,7 @@ def whitening_transform(X, return_W_matrix = False):
 	else:
 		return Xwhitened
 
+
 def load_prevalence_Rt_data():
 	"""
 	Load data and return as estimated number of infectious people per million
@@ -432,7 +433,7 @@ def load_government_response_data(country = 'NLD'):
 
 	return df_response
 
-def load_mobility_data(smooth = False, smoothsize = 7, apple_mobility_url_base = 'https://covid19-static.cdn-apple.com/covid19-mobility-data/2025HotfixDev21/v3/en-us/applemobilitytrends-'):
+def load_mobility_data(smooth = False, smoothsize = 7, apple_mobility_url_base = 'https://covid19-static.cdn-apple.com/covid19-mobility-data/2101HotfixDev17/v3/en-us/applemobilitytrends-'):
 	"""
 	Load Apple and Google mobility data. Downloadable from:
 
@@ -986,9 +987,9 @@ def load_weather_data(smooth = False, abs_hum = False):
 		#also remove zip file
 		# os.remove(google_mobility_fname_zip)
 
-	df_weather = pd.read_csv(fname_weather, skiprows = 47, usecols = ['YYYYMMDD', '   TG', '	Q', '   UG', '   PG'])
+	df_weather = pd.read_csv(fname_weather, skiprows = 47, usecols = ['YYYYMMDD', '   TG', '    Q', '   UG', '   PG'])
 
-	df_weather = df_weather.rename(columns = {'YYYYMMDD': 'Date', '   TG': 'TAvg', '	Q': 'Rad', '   UG': 'HumAvg', '   PG': 'P'})
+	df_weather = df_weather.rename(columns = {'YYYYMMDD': 'Date', '   TG': 'TAvg', '    Q': 'Rad', '   UG': 'HumAvg', '   PG': 'P'})
 
 	df_weather['Date'] = pd.to_datetime(df_weather['Date'], format = '%Y%m%d')
 	df_weather.set_index('Date', inplace = True)
@@ -1160,6 +1161,36 @@ def load_mortality_hosp_agegroup():
 
 	return df_deaths_hosp_agegroups
 
+def load_performed_tests():
+	"""
+	Load data on number of tests taken and number of positive tests per security
+	region in the Netherlands.
+
+	More info, see:
+	https://data.rivm.nl/geonetwork/srv/dut/catalog.search#/metadata/0f3336f5-0f16-462c-9031-bb60adde4af1?tab=relations
+	"""
+	url_performed_tests = 'https://data.rivm.nl/covid-19/COVID-19_uitgevoerde_testen.csv'
+	fname_performed_tests = f'{dataloc}testdata_security_regions.csv'
+
+	downloadSave(url_performed_tests, fname_performed_tests, check_file_exists = True)
+
+	#load only a few columns
+	df_performed_tests = pd.read_csv(fname_performed_tests, usecols = ['Date_of_statistics', 'Security_region_name', 'Tested_with_result', 'Tested_positive'], sep = ';')
+
+	#rename columns
+	df_performed_tests = df_performed_tests.rename(columns = {
+										'Date_of_statistics': 'Date',
+										'Tested_with_result': 'Number_of_tests',
+										'Tested_positive': 'Total_reported'})
+
+	#convert to date
+	df_performed_tests['Date'] = pd.to_datetime(df_performed_tests['Date'], format = '%Y-%m-%d')
+
+	#aggregate over the dates, makes the date the index as well
+	df_performed_tests = df_performed_tests.groupby(['Date']).sum()
+
+	return df_performed_tests
+
 
 def plot_prevalence_R():
 	df_prevalence, df_Rt = load_prevalence_Rt_data()
@@ -1307,45 +1338,56 @@ def plot_sewage():
 	plt.savefig(f'{plotloc}Sewage_measurements.png', dpi = 200, bbox_inches = 'tight')
 	plt.close()
 
-def plot_daily_results(use_individual_data = True, startdate = '2020-07-01'):
+def plot_daily_results(datastream = 'performed_tests', startdate = '2020-07-01'):
 	"""
 	Plot up to date test results
 	"""
-	if use_individual_data:
-		df_daily_covid = load_individual_positive_test_data(load_agegroups = False)
-
-		df_daily_covid = df_daily_covid.rename(columns = {'N_cases': 'Total_reported'})
-	else:
-		df_daily_covid = g(correct_for_delay = False)
-	df_n_tests = load_number_of_tests(enddate = df_daily_covid.index.values[-1], ignore_last_datapoint = False)
-
-	df_response = load_government_response_data()
-
-	### correct for the delay between the onset of symptoms and the result of the test
+	### correction factors for delay
 	#for source of incubation period, see the readme
 	incubation_period = 6 #days, left of average of 8.3 due to extremely skewed distribution
 	#test delay determined from anecdotal evidence
 	time_to_test_delay = 3 #days
 	result_delay = 1
 
-	if not use_individual_data:
-		#correct the results to the day of the test
-		df_daily_covid.index = df_daily_covid.index - pd.Timedelta(f'{result_delay} day')
 
-		#merge datasets
-		df_daily_covid = df_daily_covid.merge(df_n_tests[['Number_of_tests', 'Extrapolated']], right_index = True, left_index = True)
+	df_response = load_government_response_data()
 
-		#correct the results to the day of infection
+	#determine which data source to use, which then results in choosing
+	#how to handle the delays
+	if datastream == 'performed_tests':
+		df_daily_covid = load_performed_tests()
+
+		#perform only correction for incubation period and delay to getting tested
 		df_daily_covid.index = df_daily_covid.index - pd.Timedelta(f'{int(incubation_period + time_to_test_delay)} day')
-	else:
-		#shift number of tests to date of disease onset (DDO)
-		df_n_tests.index = df_n_tests.index - pd.Timedelta(f'{int(time_to_test_delay)} day')
+	elif datastream in ['individual', 'daily']:
+		if datastream == 'individual':
+			df_daily_covid = load_individual_positive_test_data(load_agegroups = False)
 
-		#merge datasets
-		df_daily_covid = df_daily_covid.merge(df_n_tests[['Number_of_tests', 'Extrapolated']], right_index = True, left_index = True)
+			df_daily_covid = df_daily_covid.rename(columns = {'N_cases': 'Total_reported'})
+		elif datastream == 'daily':
+			df_daily_covid = load_daily_covid(correct_for_delay = False)
 
-		#correct the results to the day of infection
-		df_daily_covid.index = df_daily_covid.index - pd.Timedelta(f'{int(incubation_period)} day')
+		df_n_tests = load_number_of_tests(enddate = df_daily_covid.index.values[-1], ignore_last_datapoint = False)
+
+		### correct for the delay between the onset of symptoms and the result of the test
+		if datastream == 'daily':
+			#correct the results to the day of the test
+			df_daily_covid.index = df_daily_covid.index - pd.Timedelta(f'{result_delay} day')
+
+			#merge datasets
+			df_daily_covid = df_daily_covid.merge(df_n_tests[['Number_of_tests', 'Extrapolated']], right_index = True, left_index = True)
+
+			#correct the results to the day of infection
+			df_daily_covid.index = df_daily_covid.index - pd.Timedelta(f'{int(incubation_period + time_to_test_delay)} day')
+		elif datastream == 'individual':
+			#shift number of tests to date of disease onset (DDO)
+			df_n_tests.index = df_n_tests.index - pd.Timedelta(f'{int(time_to_test_delay)} day')
+
+			#merge datasets
+			df_daily_covid = df_daily_covid.merge(df_n_tests[['Number_of_tests', 'Extrapolated']], right_index = True, left_index = True)
+
+			#correct the results to the day of infection
+			df_daily_covid.index = df_daily_covid.index - pd.Timedelta(f'{int(incubation_period)} day')
 
 	#determine test positivity rate
 	df_daily_covid['Positivity_ratio'] = df_daily_covid['Total_reported']/df_daily_covid['Number_of_tests']
@@ -1365,27 +1407,30 @@ def plot_daily_results(use_individual_data = True, startdate = '2020-07-01'):
 	ax3.spines['right'].set_position(('axes', 1.12))
 
 	#plot number of positive tests
-	lns1 = ax1.plot(df_daily_covid.index, df_daily_covid['Total_reported'],	label = 'Number of positive tests')
+	lns = ax1.plot(df_daily_covid.index, df_daily_covid['Total_reported'],	label = 'Number of positive tests')
 	#and the number of tests
-	lns2 = ax1.plot(df_daily_covid.index, df_daily_covid['Number_of_tests'], label = 'Number of tests')
+	lns += ax1.plot(df_daily_covid.index, df_daily_covid['Number_of_tests'], label = 'Number of tests')
 	#plot test positivity rate
-	lns3 = ax2.plot(df_daily_covid[~df_daily_covid['Extrapolated']].index, df_daily_covid[~df_daily_covid['Extrapolated']]['Positivity_ratio']*100, label = 'Positivity rate', color = '#D10000')
-	lns4 = ax2.plot(df_daily_covid[df_daily_covid['Extrapolated']].index, df_daily_covid[df_daily_covid['Extrapolated']]['Positivity_ratio']*100, label = 'Positivity rate (number of\ntests extrapolated)', color = '#D10000', linestyle = '--')
+	if datastream == 'performed_tests':
+		lns += ax2.plot(df_daily_covid.index, df_daily_covid['Positivity_ratio']*100, label = 'Positivity rate', color = '#D10000')
+	else:
+		#got to indicate on which dates the number of tests is extrapolated
+		lns += ax2.plot(df_daily_covid[~df_daily_covid['Extrapolated']].index, df_daily_covid[~df_daily_covid['Extrapolated']]['Positivity_ratio']*100, label = 'Positivity rate', color = '#D10000')
+		lns += ax2.plot(df_daily_covid[df_daily_covid['Extrapolated']].index, df_daily_covid[df_daily_covid['Extrapolated']]['Positivity_ratio']*100, label = 'Positivity rate (number of\ntests extrapolated)', color = '#D10000', linestyle = '--')
 
 	#also plot government response
-	lns5 = ax3.plot(df_response.index, df_response['StringencyIndex'], label = 'Stringency index', color = 'black')
+	lns += ax3.plot(df_response.index, df_response['StringencyIndex'], label = 'Stringency index', color = 'black')
 
 	ax1.grid(linestyle = ':')
 
-	if use_individual_data:
-		lns5 += indicate_incomplete_test_data(ax1, df_daily_covid)
+	if datastream in ['individual', 'performed_tests']:
+		lns += indicate_incomplete_test_data(ax1, df_daily_covid)
 
-	lns = lns1 + lns2 + lns3 + lns4 + lns5
 	labs = [l.get_label() for l in lns]
 	ax1.legend(lns, labs, loc = 'lower left', prop = {'size': 6}) #loc = 'center', bbox_to_anchor = (0.5, -0.4), ncol = 2,
 	# fig.subplots_adjust(bottom = 0.2, right = 0.8)
 
-	if use_individual_data:
+	if datastream in ['individual', 'performed_tests']:
 		ax1.set_xlabel(f'Estimated infection date\n(date of disease onset - incubation period (~6 days))')
 	else:
 		ax1.set_xlabel(f'Estimated infection date\n(reporting date - incubation period (~6 days) - test delays (~{time_to_test_delay + result_delay} days))')
@@ -1405,10 +1450,7 @@ def plot_daily_results(use_individual_data = True, startdate = '2020-07-01'):
 	ax2.set_ylim(0)
 	ax3.set_ylim(0)
 
-	if use_individual_data:
-		savename = f'{plotloc}Tests_second_wave_individual_reports.png'
-	else:
-		savename = f'{plotloc}Tests_second_wave_daily_reported.png'
+	savename = f'{plotloc}Tests_second_wave_{datastream}.png'
 
 	plt.savefig(savename, dpi = 200, bbox_inches = 'tight')
 	plt.close()
@@ -2214,6 +2256,11 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 	R = df_prevalence.loc[
 			(df_prevalence.index > (np.datetime64(startdate) - np.timedelta64(int(1/param['rho']), 'D'))) &
 			(df_prevalence.index < (np.datetime64(startdate) - np.timedelta64(int(1/param['gamma']), 'D')))]['prev_avg'].sum() / (1/param['gamma'])
+
+	### total number of people which were infected
+	tot_infected = df_prevalence.loc[
+			(df_prevalence.index < (np.datetime64(startdate) - np.timedelta64(int(1/param['gamma']), 'D')))]['prev_avg'].sum() / (1/param['gamma'])
+	print(f'Total number of people infected: {int(tot_infected)}')
 	#now distribute across the age groups based on positive test results
 	#where deceased are removed from the data
 	R = R * (N/N_tot) * df_mortality_hosp_agegroup.Recovery_fraction.values
@@ -2257,8 +2304,6 @@ def epidemiological_modelling(startdate = '2021-01-20'):
 		df_pop = df_pop.append(pop, ignore_index = True)
 
 	plot_epidemiological_model(df_pop, IC_frac_of_I, IC_limit, df_pop_pyramid)
-
-
 
 def stringency_R_correlation(enddate = '2020-11-26'):
 	df_response = load_government_response_data()
@@ -2775,6 +2820,9 @@ def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 5, reg
 	df_predictors_cor = df_predictors_sel.loc[df_predictors_sel.index > startdate_for_cor]
 	df_prevalence_cor = df_prevalence_sel.loc[df_prevalence_sel.index > startdate_for_cor]
 
+	#join to filter out missing dates
+	df_all_data = df_prevalence_cor.join(df_predictors_cor, how = 'inner')
+
 	### Choose parameters to use
 
 	parameters_used = [
@@ -2803,9 +2851,10 @@ def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 5, reg
 	######## Finally finished with data merging
 
 	### get data into the shape required for sklearn functions
-	X = dataframes_to_NDarray(df_predictors_cor, parameters_used)
-	Y = np.array(df_prevalence_cor['prev_avg'])
-	weight = 1/np.array(df_prevalence_cor['prev_abs_error'])
+	X = dataframes_to_NDarray(df_all_data, parameters_used)
+	Y = np.array(df_all_data['prev_avg'])
+	weight = 1/np.array(df_all_data['prev_abs_error'])
+
 
 	### plot correlation matrix
 	if True:
@@ -2868,22 +2917,22 @@ def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 5, reg
 	test_set_days_length = 20
 	test_set_days_length_timedelta = pd.Timedelta(f'{test_set_days_length} day')
 	#get array of dates from which we will randomly pick a starting date
-	startdate_array = df_prevalence_cor.loc[df_prevalence_cor.index < (df_prevalence_cor.index[-1] - test_set_days_length_timedelta)].index.values
+	startdate_array = df_all_data.loc[df_all_data.index < (df_all_data.index[-1] - test_set_days_length_timedelta)].index.values
 
 	np.random.seed(2000)
 
 	test_segment_startdate = np.random.choice(startdate_array, 1)[0]
-	testmask = (df_predictors_cor.index > test_segment_startdate) & (df_predictors_cor.index <= (test_segment_startdate + test_set_days_length_timedelta))
+	testmask = (df_all_data.index > test_segment_startdate) & (df_all_data.index <= (test_segment_startdate + test_set_days_length_timedelta))
 
 	test_index = np.where(testmask)[0]
 
-	X_train = dataframes_to_NDarray(df_predictors_cor.loc[~testmask], parameters_used)
-	Y_train = df_prevalence_cor.loc[~testmask]['prev_avg'].values
-	weight_train = 1/df_prevalence_cor.loc[~testmask]['prev_abs_error'].values
+	X_train = dataframes_to_NDarray(df_all_data.loc[~testmask], parameters_used)
+	Y_train = df_all_data.loc[~testmask]['prev_avg'].values
+	weight_train = 1/df_all_data.loc[~testmask]['prev_abs_error'].values
 
-	X_test = dataframes_to_NDarray(df_predictors_cor.loc[testmask], parameters_used)
-	Y_test = df_prevalence_cor.loc[testmask]['prev_avg'].values
-	weight_test = 1/df_prevalence_cor.loc[testmask]['prev_abs_error'].values
+	X_test = dataframes_to_NDarray(df_all_data.loc[testmask], parameters_used)
+	Y_test = df_all_data.loc[testmask]['prev_avg'].values
+	weight_test = 1/df_all_data.loc[testmask]['prev_abs_error'].values
 
 
 	### apply regression
@@ -2915,7 +2964,7 @@ def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 5, reg
 	ax.scatter(Y_test, test_pred, alpha = 0.4, color = 'navy', s = 8, label = f'Predictions (Test $R^2$ = {r_squared_test:0.03f})')
 
 	#plot error bars
-	errorbar_data = np.stack((df_prevalence_cor['prev_low'].values[test_index], df_prevalence_cor['prev_up'].values[test_index]))
+	errorbar_data = np.stack((df_all_data['prev_low'].values[test_index], df_all_data['prev_up'].values[test_index]))
 	ax.errorbar(Y_test, test_pred, xerr = errorbar_data, ecolor = 'navy', elinewidth = 0.5, capthick = 0.5, capsize = 2, errorevery = 2, ls = 'none')
 
 
@@ -2944,7 +2993,7 @@ def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 5, reg
 
 	### Now make predictions for the most recent data
 	#select the positive test data
-	df_predictors_pred = df_predictors.loc[df_predictors.index > startdate_for_cor]
+	df_predictors_pred = df_all_data.loc[df_all_data.index > startdate_for_cor]
 	# print(df_predictors_pred.tail(10))
 	# print('^ data used for predictions ^')
 	#get data in sklearn shape
@@ -3020,9 +3069,9 @@ def main():
 	# plot_R_versus_weather()
 	# plot_longterm_prevalence_decay(given_R = 0.9)
 
-	epidemiological_modelling()
+	# epidemiological_modelling()
 
-	# plot_daily_results(use_individual_data = True, startdate = '2020-09-01')
+	plot_daily_results(datastream = 'performed_tests', startdate = '2020-09-01')
 	# plot_prevalence_R()
 	# plot_mobility()
 	# plot_sewage()
@@ -3033,8 +3082,8 @@ def main():
 	# pd.set_option('display.max_rows', None)
 	# print(df['C6'])
 
-	# estimate_recent_R(enddate_train = '2021-01-08', regression_method = 'Ridge')
-	# estimate_recent_prevalence(enddate_train = '2021-01-13', regression_method = 'AdaBoost')
+	# estimate_recent_R(enddate_train = '2021-01-21', regression_method = 'Ridge')
+	# estimate_recent_prevalence(enddate_train = '2021-01-27', regression_method = 'AdaBoost')
 
 if __name__ == '__main__':
 	main()
