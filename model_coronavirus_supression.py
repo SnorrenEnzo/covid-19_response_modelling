@@ -433,7 +433,7 @@ def load_government_response_data(country = 'NLD'):
 
 	return df_response
 
-def load_mobility_data(smooth = False, smoothsize = 7, apple_mobility_url_base = 'https://covid19-static.cdn-apple.com/covid19-mobility-data/2101HotfixDev17/v3/en-us/applemobilitytrends-'):
+def load_mobility_data(smooth = False, smoothsize = 7, apple_mobility_url_base = 'https://covid19-static.cdn-apple.com/covid19-mobility-data/2102HotfixDev18/v3/en-us/applemobilitytrends-'):
 	"""
 	Load Apple and Google mobility data. Downloadable from:
 
@@ -1170,7 +1170,7 @@ def load_performed_tests():
 	https://data.rivm.nl/geonetwork/srv/dut/catalog.search#/metadata/0f3336f5-0f16-462c-9031-bb60adde4af1?tab=relations
 	"""
 	url_performed_tests = 'https://data.rivm.nl/covid-19/COVID-19_uitgevoerde_testen.csv'
-	fname_performed_tests = f'{dataloc}testdata_security_regions.csv'
+	fname_performed_tests = f'{dataloc}performed_tests.csv'
 
 	downloadSave(url_performed_tests, fname_performed_tests, check_file_exists = True)
 
@@ -1246,8 +1246,15 @@ def plot_prevalence_R():
 
 	plt.savefig(f'{plotloc}coronadashboard_prevalence_R.png', dpi = 200, bbox_inches = 'tight')
 
-def plot_mobility():
+def plot_mobility(startdate = '2020-07-01'):
 	df_google_mob, df_apple_mob = load_mobility_data(smooth = True)
+	df_response = load_government_response_data()
+
+	#filter on startdate
+
+	df_google_mob = df_google_mob.loc[df_google_mob.index > startdate]
+	df_apple_mob = df_apple_mob.loc[df_apple_mob.index > startdate]
+	df_response = df_response.loc[df_response.index > startdate]
 
 	#smooth the data
 	# relevant_keys = [
@@ -1260,24 +1267,31 @@ def plot_mobility():
 	# ]
 
 	### plot google data
-	fig, ax = plt.subplots()
+	fig, ax1 = plt.subplots()
 
-	ax.plot(df_google_mob.index, df_google_mob['retail_recreation_smooth'], label = 'Retail & recreation')
-	ax.plot(df_google_mob.index, df_google_mob['grocery_pharmacy_smooth'], label = 'Grocery & pharmacy')
-	ax.plot(df_google_mob.index, df_google_mob['parks_smooth'], label = 'Parks')
-	ax.plot(df_google_mob.index, df_google_mob['transit_stations_smooth'], label = 'Transit stations')
-	ax.plot(df_google_mob.index, df_google_mob['workplaces_smooth'], label = 'Workplaces')
-	ax.plot(df_google_mob.index, df_google_mob['residential_smooth'], label = 'Residential')
+	ax2 = ax1.twinx()
 
-	ax.set_ylim(-100, 100)
-	ax.grid(linestyle = ':')
+	lns = ax1.plot(df_google_mob.index, df_google_mob['retail_recreation_smooth'], label = 'Retail & recreation')
+	lns += ax1.plot(df_google_mob.index, df_google_mob['grocery_pharmacy_smooth'], label = 'Grocery & pharmacy')
+	lns += ax1.plot(df_google_mob.index, df_google_mob['parks_smooth'], label = 'Parks')
+	lns += ax1.plot(df_google_mob.index, df_google_mob['transit_stations_smooth'], label = 'Transit stations')
+	lns += ax1.plot(df_google_mob.index, df_google_mob['workplaces_smooth'], label = 'Workplaces')
+	lns += ax1.plot(df_google_mob.index, df_google_mob['residential_smooth'], label = 'Residential')
 
-	ax.set_ylabel('Mobility change relative to baseline [%]')
+	#also plot government response
+	lns +=  ax2.plot(df_response.index, df_response['StringencyIndex'], label = 'Stringency index', color = betterblack)
 
-	ax.set_title('Mobility change in the Netherlands based on Google data')
+	ax1.set_ylim(-100, 100)
+	ax2.set_ylim(0)
+	ax1.grid(linestyle = ':')
 
-	ax.legend(loc = 'lower center', ncol = 3, prop = {'size': 9})
-	ax.xaxis.set_tick_params(rotation = 45)
+	ax1.set_ylabel('Mobility change relative to baseline [%]')
+
+	ax1.set_title('Mobility change in the Netherlands based on Google data')
+
+	labs = [l.get_label() for l in lns]
+	ax1.legend(lns, labs, loc = 'lower center', ncol = 3, prop = {'size': 9})
+	ax1.xaxis.set_tick_params(rotation = 45)
 
 	plt.savefig(f'{R_plotloc}Mobility_change_Google.png', dpi = 200, bbox_inches = 'tight')
 	plt.close()
@@ -1650,10 +1664,11 @@ def plot_individual_data(use_agegroups = True):
 			indicate_incomplete_test_data(ax, df_individual)
 
 			#fix the date labels
-			ax.set_xticks(pd.date_range(np.min(df_individual.index), np.max(df_individual.index), freq = '14D', format = '%d-%m-%Y').to_series())
-			fig.autofmt_xdate()
+			# ax.set_xticks(pd.date_range(np.min(df_individual.index), np.max(df_individual.index), freq = '14D', format = '%d-%m-%Y').to_series())
+			# fig.autofmt_xdate()
 			myfmt = mdates.DateFormatter('%d-%m-%Y')
 			ax.xaxis.set_major_formatter(myfmt)
+			ax.xaxis.set_tick_params(rotation = 45)
 
 			ax.set_xlabel('Estimated date of infection (date of disease onset - incubation period)')
 			ax.set_ylabel('Percentage of people in age group')
@@ -2740,18 +2755,16 @@ def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 5, reg
 	startdate_train = '2020-09-08'
 
 	df_prevalence, df_Rt = load_prevalence_Rt_data()
-	df_overall_positive_tests = load_daily_covid(correct_for_delay = False)
+	df_daily_covid = load_performed_tests()
 	df_individual = load_individual_positive_test_data(load_agegroups = True)
-	df_n_tests = load_number_of_tests(enddate = np.datetime64('today'))
 	df_sewage = load_sewage_data(smooth = True, shiftdates = False)
 	#for the plot as a reference
 	df_response = load_government_response_data()
 
 	print('------------')
 	print('Prevalence prediction input data latest entries:')
-	print('Overall positive tests data: ' + str(df_overall_positive_tests.index[-1].date()))
+	print('Performed tests data: ' + str(df_daily_covid.index[-1].date()))
 	print('Individual positive test data: ' + str(df_individual.index[-1].date()))
-	print('N tests data: ' + str(df_n_tests.index[-1].date()))
 	print('Sewage data: ' + str(df_sewage.index[-1].date()))
 	print('------------')
 
@@ -2760,12 +2773,6 @@ def estimate_recent_prevalence(enddate_train = '2020-11-01', smoothsize = 5, reg
 	agegroup_cols = list(df_individual.columns)
 	#convert to percentages to make it a bit easier for the ML algorithms to learn
 	df_individual[agegroup_cols] *= 100
-
-	#correct the results to the day of the test
-	df_overall_positive_tests.index = df_overall_positive_tests.index - pd.Timedelta(f'{result_delay} day')
-
-	#merge datasets for test positivity calculations
-	df_daily_covid = df_n_tests[['Number_of_tests']].join(df_overall_positive_tests[['Total_reported']], how = 'inner')
 
 	#determine test positivity rate for the overall sample
 	df_daily_covid['Positivity_ratio'] = df_daily_covid['Total_reported']/df_daily_covid['Number_of_tests']
@@ -3071,9 +3078,9 @@ def main():
 
 	# epidemiological_modelling()
 
-	plot_daily_results(datastream = 'performed_tests', startdate = '2020-09-01')
+	# plot_daily_results(datastream = 'performed_tests', startdate = '2020-09-01')
 	# plot_prevalence_R()
-	# plot_mobility()
+	plot_mobility()
 	# plot_sewage()
 	# plot_individual_data()
 	# plot_cluster_change()
@@ -3082,8 +3089,8 @@ def main():
 	# pd.set_option('display.max_rows', None)
 	# print(df['C6'])
 
-	# estimate_recent_R(enddate_train = '2021-01-21', regression_method = 'Ridge')
-	# estimate_recent_prevalence(enddate_train = '2021-01-27', regression_method = 'AdaBoost')
+	# estimate_recent_R(enddate_train = '2021-01-28', regression_method = 'Ridge')
+	# estimate_recent_prevalence(enddate_train = '2021-02-03', regression_method = 'AdaBoost')
 
 if __name__ == '__main__':
 	main()
