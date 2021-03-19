@@ -433,7 +433,7 @@ def load_government_response_data(country = 'NLD'):
 
 	return df_response
 
-def load_mobility_data(smooth = False, smoothsize = 7, apple_mobility_url_base = 'https://covid19-static.cdn-apple.com/covid19-mobility-data/2102HotfixDev18/v3/en-us/applemobilitytrends-'):
+def load_mobility_data(smooth = False, smoothsize = 7, apple_mobility_url_base = 'https://covid19-static.cdn-apple.com/covid19-mobility-data/2104HotfixDev8/v3/en-us/applemobilitytrends-'):
 	"""
 	Load Apple and Google mobility data. Downloadable from:
 
@@ -653,16 +653,16 @@ def load_sewage_data(smooth = False, windowsize = 3, shiftdates = False):
 
 	downloadSave(sewage_url, sewage_fname, check_file_exists = True)
 
-	df_sewage = pd.read_csv(sewage_fname, usecols = ['Date_measurement', 'Security_region_name', 'Percentage_in_security_region', 'RNA_flow_per_100000', 'Representative_measurement'])
+	df_sewage = pd.read_csv(sewage_fname, usecols = ['Date_measurement', 'RWZI_AWZI_name', 'RNA_flow_per_100000'], sep = ';')
 
 	#shift RNA units to "* 100 billion"
 	df_sewage['RNA_flow_per_100000'] /= 100e9
 
 	#only take "representative measurements" which span 24 hours instead of a single moment
 	#remove nans
-	df_sewage = df_sewage.loc[df_sewage['Representative_measurement'].notna()]
-	df_sewage = df_sewage.loc[df_sewage['Representative_measurement']]
-	del df_sewage['Representative_measurement']
+	# df_sewage = df_sewage.loc[df_sewage['Representative_measurement'].notna()]
+	# df_sewage = df_sewage.loc[df_sewage['Representative_measurement']]
+	# del df_sewage['Representative_measurement']
 
 	#rename columns
 	df_sewage = df_sewage.rename(columns = {'Date_measurement': 'Date'})
@@ -3078,19 +3078,19 @@ def main():
 
 	# epidemiological_modelling()
 
-	# plot_daily_results(datastream = 'performed_tests', startdate = '2020-09-01')
-	# plot_prevalence_R()
+	plot_daily_results(datastream = 'performed_tests', startdate = '2020-09-01')
+	plot_prevalence_R()
 	plot_mobility()
-	# plot_sewage()
-	# plot_individual_data()
-	# plot_cluster_change()
+	plot_sewage()
+	plot_individual_data()
+	plot_cluster_change()
 
 	# df = load_government_response_data(country = 'BEL')
 	# pd.set_option('display.max_rows', None)
 	# print(df['C6'])
 
-	# estimate_recent_R(enddate_train = '2021-01-28', regression_method = 'Ridge')
-	# estimate_recent_prevalence(enddate_train = '2021-02-03', regression_method = 'AdaBoost')
+	estimate_recent_R(enddate_train = '2021-03-01', regression_method = 'Ridge')
+	estimate_recent_prevalence(enddate_train = '2021-03-01', regression_method = 'AdaBoost')
 
 if __name__ == '__main__':
 	main()
